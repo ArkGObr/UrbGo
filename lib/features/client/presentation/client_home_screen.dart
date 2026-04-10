@@ -22,23 +22,24 @@ class ClientHomeScreen extends ConsumerWidget {
         elevation: 0,
         title: Row(
           children: [
-            Container(
+            Image.asset(
+              'assets/logo.png',
               width: 36,
               height: 36,
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.delivery_dining_rounded,
-                color: AppColors.textInverse,
-                size: 20,
-              ),
+              fit: BoxFit.contain,
             ),
             const SizedBox(width: AppSpacing.sm),
-            Text(
-              'UrbGo',
-              style: AppTypography.h2.copyWith(color: AppColors.primary),
+            RichText(
+              text: TextSpan(
+                style: AppTypography.h2,
+                children: [
+                  const TextSpan(text: 'Urb'),
+                  TextSpan(
+                    text: 'Go',
+                    style: AppTypography.h2.copyWith(color: AppColors.primary),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -90,6 +91,7 @@ class ClientHomeScreen extends ConsumerWidget {
         ),
         error: (e, _) => _ErrorState(
           onRetry: () => ref.invalidate(clientDeliveriesProvider),
+          e: e,
         ),
         data: (deliveries) {
           if (deliveries.isEmpty) {
@@ -224,8 +226,9 @@ class _EmptyState extends StatelessWidget {
 // ── Error State ───────────────────────────────────────────────
 class _ErrorState extends StatelessWidget {
   final VoidCallback onRetry;
+  final Object e;
 
-  const _ErrorState({required this.onRetry});
+  const _ErrorState({required this.onRetry, required this.e});
 
   @override
   Widget build(BuildContext context) {
@@ -242,8 +245,9 @@ class _ErrorState extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.lg),
             Text(
-              'Erro ao carregar entregas',
-              style: AppTypography.h3,
+              'Erro: ${e.toString()}',
+              style: AppTypography.h4.copyWith(color: AppColors.error),
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: AppSpacing.xl2),
             TextButton.icon(

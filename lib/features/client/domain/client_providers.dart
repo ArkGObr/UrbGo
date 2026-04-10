@@ -18,7 +18,12 @@ final clientDeliveriesProvider =
     FutureProvider<List<DeliveryModel>>((ref) async {
   final user = ref.watch(authNotifierProvider).valueOrNull;
   if (user == null) return [];
-  return ref.read(deliveryRepositoryProvider).getClientDeliveries(user.id);
+  try {
+    return await ref.read(deliveryRepositoryProvider).getClientDeliveries(user.id);
+  } catch (e, stack) {
+    print('Erro em clientDeliveriesProvider: $e\n$stack');
+    throw Exception('Erro ao carregar: $e');
+  }
 });
 
 /// Entregas ativas do cliente (pending, accepted, in_progress)

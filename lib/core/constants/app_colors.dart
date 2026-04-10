@@ -8,10 +8,10 @@ class AppColors {
   static const Color surfaceBorder = Color(0xFF2A2A2A);
 
   // ── Brand ─────────────────────────────────────────────────
-  static const Color primary     = Color(0xFF00FF66);
-  static const Color primaryDark = Color(0xFF00CC52);
+  static const Color primary     = Color(0xFF99eb09);
+  static const Color primaryDark = Color(0xFF88D208);
   static const Color primaryDeep = Color(0xFF003D1A);
-  static const Color primaryGlow = Color(0x2600FF66);
+  static const Color primaryGlow = Color(0x2699eb09);
 
   // ── Texto ─────────────────────────────────────────────────
   static const Color textPrimary   = Color(0xFFFFFFFF);
@@ -20,7 +20,7 @@ class AppColors {
   static const Color textInverse   = Color(0xFF0A0A0A);
 
   // ── Semânticas ────────────────────────────────────────────
-  static const Color success = Color(0xFF00FF66);
+  static const Color success = Color(0xFF99eb09);
   static const Color warning = Color(0xFFFFB800);
   static const Color error   = Color(0xFFFF3B3B);
   static const Color info    = Color(0xFF3B9EFF);
@@ -28,8 +28,8 @@ class AppColors {
   // ── Status de entrega ─────────────────────────────────────
   static const Color statusPending    = Color(0xFFFFB800);
   static const Color statusAccepted   = Color(0xFF3B9EFF);
-  static const Color statusInProgress = Color(0xFF00FF66);
-  static const Color statusCompleted  = Color(0xFF00CC52);
+  static const Color statusInProgress = Color(0xFF99eb09);
+  static const Color statusCompleted  = Color(0xFF88D208);
   static const Color statusCancelled  = Color(0xFFFF3B3B);
 
   // ── Overlay ───────────────────────────────────────────────

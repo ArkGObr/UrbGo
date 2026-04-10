@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/app_spacing.dart';
-import '../../../core/constants/app_typography.dart';
 import '../domain/auth_provider.dart';
 
 class SplashScreen extends ConsumerWidget {
@@ -25,49 +23,32 @@ class SplashScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Logo
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(22),
-                boxShadow: const [
-                  BoxShadow(
-                    color: AppColors.primaryGlow,
-                    blurRadius: 30,
-                    spreadRadius: 2,
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.delivery_dining_rounded,
-                color: AppColors.textInverse,
-                size: 44,
-              ),
+      body: Stack(
+        children: [
+          // Splash Logo / Image
+          Center(
+            child: Image.asset(
+              'assets/logo-grande.png',
+              width: 500,
+              fit: BoxFit.contain,
             ),
-            const SizedBox(height: AppSpacing.xl2),
-            Text('UrbGo', style: AppTypography.display2),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              'Sua entrega em movimento',
-              style: AppTypography.bodyMedium,
-            ),
-            const SizedBox(height: AppSpacing.xl6),
-            const SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(
-                color: AppColors.primary,
-                strokeWidth: 2,
+          ),
+          // Loading indicator at the bottom
+          const Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: EdgeInsets.only(bottom: 64.0),
+              child: SizedBox(
+                width: 32,
+                height: 32,
+                child: CircularProgressIndicator(
+                  color: AppColors.primary,
+                  strokeWidth: 3,
+                ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

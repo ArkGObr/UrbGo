@@ -92,23 +92,24 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen> {
         elevation: 0,
         title: Row(
           children: [
-            Container(
+            Image.asset(
+              'assets/logo.png',
               width: 36,
               height: 36,
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.delivery_dining_rounded,
-                color: AppColors.textInverse,
-                size: 20,
-              ),
+              fit: BoxFit.contain,
             ),
             const SizedBox(width: AppSpacing.sm),
-            Text(
-              'UrbGo',
-              style: AppTypography.h2.copyWith(color: AppColors.primary),
+            RichText(
+              text: TextSpan(
+                style: AppTypography.h2,
+                children: [
+                  const TextSpan(text: 'Urb'),
+                  TextSpan(
+                    text: 'Go',
+                    style: AppTypography.h2.copyWith(color: AppColors.primary),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -141,7 +142,7 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen> {
             children: [
               const Icon(Icons.error_outline, color: AppColors.error, size: 48),
               const SizedBox(height: AppSpacing.lg),
-              Text('Erro ao carregar dados', style: AppTypography.h3),
+              Text('Erro: $e', style: AppTypography.h4.copyWith(color: AppColors.error), textAlign: TextAlign.center),
               const SizedBox(height: AppSpacing.lg),
               TextButton.icon(
                 onPressed: () => ref.invalidate(motoboyStreamProvider),
@@ -224,17 +225,17 @@ class _BalanceCard extends StatelessWidget {
       width: double.infinity,
       padding: AppSpacing.cardPaddingLarge,
       decoration: BoxDecoration(
-        color: AppColors.primaryDeep,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(
-          color: AppColors.primary.withValues(alpha: 0.3),
+          color: AppColors.surfaceBorder,
           width: 1,
         ),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.08),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
+            color: Colors.black12,
+            blurRadius: 16,
+            offset: Offset(0, 4),
           ),
         ],
       ),
@@ -325,11 +326,11 @@ class _OnlineToggle extends StatelessWidget {
         width: double.infinity,
         padding: AppSpacing.cardPadding,
         decoration: BoxDecoration(
-          color: isOnline ? AppColors.primaryDeep : AppColors.surface,
+          color: isOnline ? AppColors.surfaceHigh : AppColors.surface,
           borderRadius: BorderRadius.circular(AppRadius.md),
           border: Border.all(
-            color: isOnline ? AppColors.primary : AppColors.surfaceBorder,
-            width: isOnline ? 1.5 : 0.8,
+            color: isOnline ? AppColors.primary.withValues(alpha: 0.5) : AppColors.surfaceBorder,
+            width: 1.0,
           ),
         ),
         child: Row(
@@ -344,12 +345,17 @@ class _OnlineToggle extends StatelessWidget {
                     : AppColors.surfaceHigh,
                 borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
-              child: Icon(
-                isOnline
-                    ? Icons.wifi_tethering_rounded
-                    : Icons.wifi_tethering_off_rounded,
-                color: isOnline ? AppColors.primary : AppColors.textTertiary,
-                size: 24,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                transitionBuilder: (child, animation) => ScaleTransition(scale: animation, child: child),
+                child: Icon(
+                  isOnline
+                      ? Icons.wifi_tethering_rounded
+                      : Icons.wifi_tethering_off_rounded,
+                  key: ValueKey('icon_$isOnline'),
+                  color: isOnline ? AppColors.primary : AppColors.textTertiary,
+                  size: 24,
+                ),
               ),
             ),
             const SizedBox(width: AppSpacing.md),
@@ -357,42 +363,67 @@ class _OnlineToggle extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    isOnline ? 'Você está online' : 'Você está offline',
+                  AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 300),
                     style: AppTypography.h4.copyWith(
-                      color: isOnline
-                          ? AppColors.primary
-                          : AppColors.textPrimary,
+                      color: isOnline ? AppColors.primary : AppColors.textPrimary,
+                    ),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      layoutBuilder: (currentChild, previousChildren) => Stack(
+                        alignment: Alignment.centerLeft,
+                        children: <Widget>[
+                          ...previousChildren,
+                          if (currentChild != null) currentChild,
+                        ],
+                      ),
+                      child: Text(
+                        isOnline ? 'Você está online' : 'Você está offline',
+                        key: ValueKey('title_$isOnline'),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    isOnline
-                        ? 'Recebendo corridas'
-                        : 'Toque para ficar online',
-                    style: AppTypography.bodySmall,
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    layoutBuilder: (currentChild, previousChildren) => Stack(
+                      alignment: Alignment.centerLeft,
+                      children: <Widget>[
+                        ...previousChildren,
+                        if (currentChild != null) currentChild,
+                      ],
+                    ),
+                    child: Text(
+                      isOnline ? 'Recebendo corridas' : 'Toque para ficar online',
+                      key: ValueKey('sub_$isOnline'),
+                      style: AppTypography.bodySmall,
+                    ),
                   ),
                 ],
               ),
             ),
-            if (isToggling)
-              const SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  color: AppColors.primary,
-                  strokeWidth: 2,
-                ),
-              )
-            else
-              Switch(
-                value: isOnline,
-                activeThumbColor: AppColors.primary,
-                activeTrackColor: AppColors.primary.withValues(alpha: 0.3),
-                inactiveThumbColor: AppColors.textTertiary,
-                inactiveTrackColor: AppColors.surfaceBorder,
-                onChanged: (_) => onToggle(),
-              ),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: isToggling
+                  ? const SizedBox(
+                      key: ValueKey('loading'),
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        color: AppColors.primary,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : Switch(
+                      key: const ValueKey('switch'),
+                      value: isOnline,
+                      activeThumbColor: AppColors.primary,
+                      activeTrackColor: AppColors.primary.withValues(alpha: 0.3),
+                      inactiveThumbColor: AppColors.textTertiary,
+                      inactiveTrackColor: AppColors.surfaceBorder,
+                      onChanged: (_) => onToggle(),
+                    ),
+            ),
           ],
         ),
       ),

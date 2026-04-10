@@ -11,10 +11,26 @@ final motoboyRepositoryProvider =
     Provider<MotoboyRepository>((ref) => MotoboyRepository());
 
 /// Dados do motoboy em tempo real
-final motoboyStreamProvider = StreamProvider<MotoboyModel>((ref) {
+final motoboyStreamProvider = StreamProvider<MotoboyModel>((ref) async* {
   final user = ref.watch(authNotifierProvider).valueOrNull;
   if (user == null) throw Exception('Não autenticado');
-  return ref.read(motoboyRepositoryProvider).watchMotoboy(user.id);
+
+  // Verifica se o registro motoboys existe; se não, cria (fallback caso a trigger falhe)
+  final exists = await Supabase.instance.client
+      .from('motoboys')
+      .select('id')
+      .eq('id', user.id)
+      .maybeSingle();
+
+  if (exists == null) {
+      await Supabase.instance.client.from('motoboys').upsert({
+          'id': user.id,
+          'wallet_balance': 0.0,
+          'is_online': false,
+      });
+  }
+
+  yield* ref.read(motoboyRepositoryProvider).watchMotoboy(user.id);
 });
 
 /// Corridas disponíveis (fetch com posição)

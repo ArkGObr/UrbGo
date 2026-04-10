@@ -84,7 +84,7 @@ class AuthRepository {
         user = await _fetchUser(userId);
       } catch (e) {
         throw Exception(
-            'Conta criada, mas erro ao configurar perfil. Tente fazer login.');
+            'Conta criada, mas erro ao configurar perfil: $e');
       }
     }
 

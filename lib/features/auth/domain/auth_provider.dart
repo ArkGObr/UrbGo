@@ -16,7 +16,11 @@ class AuthNotifier extends AsyncNotifier<UserModel?> {
       }
     });
 
-    return ref.read(authRepositoryProvider).getSessionUser();
+    final delay = Future.delayed(const Duration(seconds: 2));
+    final user = await ref.read(authRepositoryProvider).getSessionUser();
+    await delay;
+    
+    return user;
   }
 
   Future<void> signUp({
