@@ -1,0 +1,10 @@
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
+class AppConstants {
+  static const double commissionRate = 0.25;
+  static const String appName = 'UrbGo';
+  static const int locationUpdateIntervalSeconds = 5;
+  static const double minimumRechargeAmount = 10.0;
+  static const String orsBaseUrl = 'https://api.openrouteservice.org';
+  static String get orsApiKey => dotenv.env['ORS_API_KEY'] ?? '';
+}
