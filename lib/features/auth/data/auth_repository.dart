@@ -20,12 +20,17 @@ class AuthRepository {
     final response = await _db.auth.signUp(
       email: email,
       password: password,
+      emailRedirectTo: 'urbgo://login-callback',
       data: {
         'name': name,
         'phone': phone,
         'role': role,
         if (clientType != null) 'client_type': clientType,
         if (document != null) 'document': document,
+        if (vehiclePlate != null) 'vehicle_plate': vehiclePlate,
+        if (vehicleCategory != null) 'vehicle_category': vehicleCategory,
+        if (vehicleModel != null) 'vehicle_model': vehicleModel,
+        if (vehicleYear != null) 'vehicle_year': vehicleYear,
       },
     );
 
@@ -34,20 +39,23 @@ class AuthRepository {
     }
 
     final userId = response.user!.id;
+    final session = response.session;
 
-    // Aguarda trigger criar o registro em users (com retry)
+    if (session == null) {
+      // Confirmação de e-mail ativada no Supabase! 
+      // Joga flag específica para roteamento
+      throw Exception('check_email_flag');
+    }
+
+    // Se estiver usando Confirmacao desligada, aguarda o DB sincornizar a sessao validada
     UserModel? user;
     for (int i = 0; i < 10; i++) {
       await Future.delayed(const Duration(milliseconds: 500));
       try {
-        final data = await _db
-            .from('users')
-            .select()
-            .eq('id', userId)
-            .maybeSingle();
+        final data = await _db.from('users').select().eq('id', userId).maybeSingle();
 
         if (data != null) {
-          // Atualiza phone e name caso o trigger não tenha pego dos metadados
+          // Já lidamos com isso de forma global no novo Trigger, mas mantemos update pra redundancia de safety.
           final updateData = <String, dynamic>{
             'phone': phone,
             'name': name,
@@ -55,29 +63,6 @@ class AuthRepository {
           if (clientType != null) updateData['client_type'] = clientType;
           if (document != null) updateData['document'] = document;
           await _db.from('users').update(updateData).eq('id', userId);
-
-          // Atualiza placa do motoboy se aplicável
-          if (role == 'motoboy') {
-            final motoboyUpdate = <String, dynamic>{};
-            if (vehiclePlate != null && vehiclePlate.isNotEmpty) {
-              motoboyUpdate['vehicle_plate'] = vehiclePlate;
-            }
-            if (vehicleCategory != null && vehicleCategory.isNotEmpty) {
-              motoboyUpdate['vehicle_category'] = vehicleCategory;
-            }
-            if (vehicleModel != null && vehicleModel.isNotEmpty) {
-              motoboyUpdate['vehicle_model'] = vehicleModel;
-            }
-            if (vehicleYear != null) {
-              motoboyUpdate['vehicle_year'] = vehicleYear;
-            }
-            if (motoboyUpdate.isNotEmpty) {
-              await _db
-                  .from('motoboys')
-                  .update(motoboyUpdate)
-                  .eq('id', userId);
-            }
-          }
 
           user = await _fetchUser(userId);
           break;
@@ -88,8 +73,6 @@ class AuthRepository {
     }
 
     if (user == null) {
-      // Cadastro no Auth funcionou mas trigger falhou.
-      // Tenta inserir manualmente na tabela users.
       try {
         await _db.from('users').upsert({
           'id': userId,
@@ -101,25 +84,9 @@ class AuthRepository {
           if (document != null) 'document': document,
         });
 
-        if (role == 'motoboy') {
-          await _db.from('motoboys').upsert({
-            'id': userId,
-            'wallet_balance': 0.0,
-            'is_online': false,
-            if (vehiclePlate != null && vehiclePlate.isNotEmpty)
-              'vehicle_plate': vehiclePlate,
-            if (vehicleCategory != null && vehicleCategory.isNotEmpty)
-              'vehicle_category': vehicleCategory,
-            if (vehicleModel != null && vehicleModel.isNotEmpty)
-              'vehicle_model': vehicleModel,
-            if (vehicleYear != null) 'vehicle_year': vehicleYear,
-          });
-        }
-
         user = await _fetchUser(userId);
       } catch (e) {
-        throw Exception(
-            'Conta criada, mas erro ao configurar perfil: $e');
+        throw Exception('Conta foi criada, porém os detalhes extras podem não ter sido salvos perfeitamente: $e');
       }
     }
 

@@ -8,7 +8,7 @@ class AppConstants {
   static const String orsBaseUrl = 'https://api.openrouteservice.org';
   static String get orsApiKey => dotenv.env['ORS_API_KEY'] ?? '';
 
-  /// Google Maps tile URL (sem API key)
+  /// Google Maps tile URL (Limpo, estilo Uber — sem empresas, hospitais, locais)
   static const String mapTileUrl =
-      'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
+      'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&apistyle=s.t:2|p.v:off,s.t:3|p.v:off';
 }

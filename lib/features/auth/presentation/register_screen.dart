@@ -97,34 +97,39 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   }
 
   void _showError(String message) {
-    final isEmailUsed =
-        message.contains('already') || message.contains('registered');
+    if (message.contains('check_email_flag')) {
+      context.go('/check-email');
+      return;
+    }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
+    final isEmailUsed = message.contains('already') || message.contains('registered');
+    final displayMessage = isEmailUsed ? 'Este e-mail já está cadastrado' : message;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          side: const BorderSide(color: AppColors.error, width: 1.5),
+        ),
+        title: Row(
           children: [
-            const Icon(Icons.error_outline, color: AppColors.error, size: 18),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: Text(
-                isEmailUsed
-                    ? 'Este e-mail já está cadastrado'
-                    : 'Erro ao criar conta. Tente novamente.',
-                style: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.textPrimary,
-                ),
-              ),
-            ),
+            const Icon(Icons.error_outline, color: AppColors.error),
+            const SizedBox(width: 8),
+            const Text('Erro no Cadastro', style: TextStyle(color: AppColors.textPrimary)),
           ],
         ),
-        backgroundColor: AppColors.surface,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.sm),
-          side: const BorderSide(color: AppColors.error, width: 1),
+        content: Text(
+          displayMessage,
+          style: AppTypography.bodySmall.copyWith(color: AppColors.textPrimary),
         ),
-        margin: const EdgeInsets.all(AppSpacing.lg),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK', style: TextStyle(color: AppColors.primary)),
+          ),
+        ],
       ),
     );
   }
@@ -203,38 +208,38 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
                 // ── Campos exclusivos para cliente ─────────────
                 if (_selectedRole == 'client') ...[
-                  Text('Tipo de cadastro', style: AppTypography.labelLarge),
-                  const SizedBox(height: AppSpacing.md),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _RoleCard(
-                          icon: Icons.person_outlined,
-                          label: 'Pessoa Física',
-                          subtitle: 'CPF',
-                          value: 'cpf',
-                          selected: _clientType == 'cpf',
-                          onTap: () => setState(() {
-                            _clientType = 'cpf';
-                            _documentCtrl.clear();
-                          }),
-                        ),
+                  DropdownButtonFormField<String>(
+                    value: _clientType,
+                    style: AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
+                    dropdownColor: AppColors.surface,
+                    decoration: InputDecoration(
+                      labelText: 'Tipo de Conta',
+                      prefixIcon: Icon(
+                        _clientType == 'cpf'
+                            ? Icons.person_outlined
+                            : Icons.business_rounded,
+                        color: AppColors.textTertiary,
+                        size: 20,
                       ),
-                      const SizedBox(width: AppSpacing.md),
-                      Expanded(
-                        child: _RoleCard(
-                          icon: Icons.business_rounded,
-                          label: 'Empresa',
-                          subtitle: 'CNPJ',
-                          value: 'cnpj',
-                          selected: _clientType == 'cnpj',
-                          onTap: () => setState(() {
-                            _clientType = 'cnpj';
-                            _documentCtrl.clear();
-                          }),
-                        ),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'cpf',
+                        child: Text('Pessoa Física (CPF)'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'cnpj',
+                        child: Text('Empresa (CNPJ)'),
                       ),
                     ],
+                    onChanged: (v) {
+                      if (v != null) {
+                        setState(() {
+                          _clientType = v;
+                          _documentCtrl.clear();
+                        });
+                      }
+                    },
                   ),
                   const SizedBox(height: AppSpacing.lg),
                   TextFormField(
