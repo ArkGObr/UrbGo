@@ -9,8 +9,10 @@ import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../shared/widgets/primary_button.dart';
+import '../../shared/widgets/vehicle_badge.dart';
 import '../domain/client_providers.dart';
 import '../domain/delivery_model.dart';
+
 
 class TrackingScreen extends ConsumerStatefulWidget {
   final String deliveryId;
@@ -21,16 +23,53 @@ class TrackingScreen extends ConsumerStatefulWidget {
   ConsumerState<TrackingScreen> createState() => _TrackingScreenState();
 }
 
-class _TrackingScreenState extends ConsumerState<TrackingScreen> {
+class _TrackingScreenState extends ConsumerState<TrackingScreen>
+    with SingleTickerProviderStateMixin {
   final MapController _mapController = MapController();
   RealtimeChannel? _motoboyChannel;
-  LatLng? _motoboyLatLng;
+
+  // Animação suave do marcador do motoboy
+  late AnimationController _motoboyAnimCtrl;
+  late Animation<double> _latAnim;
+  late Animation<double> _lngAnim;
+  LatLng? _motoboyTo;
+
   List<LatLng> _routePoints = [];
   bool _isCancelling = false;
 
   @override
+  void initState() {
+    super.initState();
+    _motoboyAnimCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    );
+    _latAnim = const AlwaysStoppedAnimation(0);
+    _lngAnim = const AlwaysStoppedAnimation(0);
+  }
+
+  void _animateMotoboyTo(LatLng newPos) {
+    final from = _motoboyTo ?? newPos;
+    _motoboyTo   = newPos;
+
+    _latAnim = Tween<double>(begin: from.latitude,  end: newPos.latitude)
+        .animate(CurvedAnimation(parent: _motoboyAnimCtrl, curve: Curves.easeInOut));
+    _lngAnim = Tween<double>(begin: from.longitude, end: newPos.longitude)
+        .animate(CurvedAnimation(parent: _motoboyAnimCtrl, curve: Curves.easeInOut));
+
+    _motoboyAnimCtrl.forward(from: 0);
+  }
+
+  LatLng? get _currentMotoboyPos {
+    if (_motoboyTo == null) return null;
+    if (!_motoboyAnimCtrl.isAnimating) return _motoboyTo;
+    return LatLng(_latAnim.value, _lngAnim.value);
+  }
+
+  @override
   void dispose() {
     _motoboyChannel?.unsubscribe();
+    _motoboyAnimCtrl.dispose();
     _mapController.dispose();
     super.dispose();
   }
@@ -41,7 +80,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
       motoboyId: motoboyId,
       onUpdate: (lat, lng) {
         if (mounted) {
-          setState(() => _motoboyLatLng = LatLng(lat, lng));
+          setState(() => _animateMotoboyTo(LatLng(lat, lng)));
         }
       },
     );
@@ -178,10 +217,10 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
         }
 
         // Usa posição do motoboy do modelo se o realtime ainda não atualizou
-        if (_motoboyLatLng == null &&
+        if (_motoboyTo == null &&
             delivery.motoboyLat != null &&
             delivery.motoboyLng != null) {
-          _motoboyLatLng = LatLng(delivery.motoboyLat!, delivery.motoboyLng!);
+          _motoboyTo = LatLng(delivery.motoboyLat!, delivery.motoboyLng!);
         }
 
         final pickupLatLng = LatLng(delivery.pickupLat, delivery.pickupLng);
@@ -194,182 +233,188 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
             children: [
               // ── Mapa ──────────────────────────────
               Expanded(
-                child: Stack(
-                  children: [
-                    FlutterMap(
-                      mapController: _mapController,
-                      options: MapOptions(
-                        initialCenter: pickupLatLng,
-                        initialZoom: 14,
-                      ),
+                child: AnimatedBuilder(
+                  animation: _motoboyAnimCtrl,
+                  builder: (_, __) {
+                    final motoboyPos = _currentMotoboyPos;
+                    return Stack(
                       children: [
-                        TileLayer(
-                          urlTemplate:
-                              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                          userAgentPackageName: 'com.urbgo.app',
-                        ),
-                        // Rota
-                        if (_routePoints.isNotEmpty)
-                          PolylineLayer(
-                            polylines: [
-                              Polyline(
-                                points: _routePoints,
-                                color: AppColors.primary,
-                                strokeWidth: 4,
-                              ),
-                            ],
+                        FlutterMap(
+                          mapController: _mapController,
+                          options: MapOptions(
+                            initialCenter: pickupLatLng,
+                            initialZoom: 14,
                           ),
-                        // Marcadores
-                        MarkerLayer(
-                          markers: [
-                            // Coleta
-                            Marker(
-                              point: pickupLatLng,
-                              width: 40,
-                              height: 40,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppColors.primary
-                                          .withValues(alpha: 0.4),
-                                      blurRadius: 10,
-                                    ),
-                                  ],
-                                ),
-                                child: const Icon(
-                                  Icons.radio_button_on_rounded,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                              ),
+                          children: [
+                            TileLayer(
+                              urlTemplate:
+                                  'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+                              userAgentPackageName: 'com.urbgo.app',
                             ),
-                            // Entrega
-                            Marker(
-                              point: deliveryLatLng,
-                              width: 40,
-                              height: 40,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: AppColors.error,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppColors.error
-                                          .withValues(alpha: 0.4),
-                                      blurRadius: 10,
-                                    ),
-                                  ],
-                                ),
-                                child: const Icon(
-                                  Icons.flag_rounded,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                              ),
-                            ),
-                            // Motoboy
-                            if (_motoboyLatLng != null)
-                              Marker(
-                                point: _motoboyLatLng!,
-                                width: 44,
-                                height: 44,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: AppColors.textInverse,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: AppColors.primary,
-                                      width: 2.5,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: AppColors.primary
-                                            .withValues(alpha: 0.4),
-                                        blurRadius: 12,
-                                      ),
-                                    ],
-                                  ),
-                                  child: const Icon(
-                                    Icons.two_wheeler_rounded,
+                            // Rota
+                            if (_routePoints.isNotEmpty)
+                              PolylineLayer(
+                                polylines: [
+                                  Polyline(
+                                    points: _routePoints,
                                     color: AppColors.primary,
-                                    size: 22,
+                                    strokeWidth: 4,
+                                  ),
+                                ],
+                              ),
+                            // Marcadores
+                            MarkerLayer(
+                              markers: [
+                                // Coleta
+                                Marker(
+                                  point: pickupLatLng,
+                                  width: 40,
+                                  height: 40,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary,
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: AppColors.primary
+                                              .withValues(alpha: 0.4),
+                                          blurRadius: 10,
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Icon(
+                                      Icons.radio_button_on_rounded,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
                                   ),
                                 ),
-                              ),
+                                // Entrega
+                                Marker(
+                                  point: deliveryLatLng,
+                                  width: 40,
+                                  height: 40,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: AppColors.error,
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: AppColors.error
+                                              .withValues(alpha: 0.4),
+                                          blurRadius: 10,
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Icon(
+                                      Icons.flag_rounded,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                  ),
+                                ),
+                                // Motoboy (animado)
+                                if (motoboyPos != null)
+                                  Marker(
+                                    point: motoboyPos,
+                                    width: 44,
+                                    height: 44,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: AppColors.textInverse,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: AppColors.primary,
+                                          width: 2.5,
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: AppColors.primary
+                                                .withValues(alpha: 0.4),
+                                            blurRadius: 12,
+                                          ),
+                                        ],
+                                      ),
+                                      child: const Icon(
+                                        Icons.two_wheeler_rounded,
+                                        color: AppColors.primary,
+                                        size: 22,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ],
+                        ),
+
+                        // Botão voltar
+                        Positioned(
+                          top: MediaQuery.of(context).padding.top + 8,
+                          left: AppSpacing.lg,
+                          child: GestureDetector(
+                            onTap: () => context.go('/client/home'),
+                            child: Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: AppColors.background,
+                                borderRadius: BorderRadius.circular(AppRadius.sm),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.3),
+                                    blurRadius: 10,
+                                  ),
+                                ],
+                              ),
+                              child: const Icon(
+                                Icons.arrow_back_rounded,
+                                color: AppColors.textPrimary,
+                                size: 22,
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        // Badge de status no topo
+                        Positioned(
+                          top: MediaQuery.of(context).padding.top + 8,
+                          right: AppSpacing.lg,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.md,
+                              vertical: AppSpacing.sm,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.background,
+                              borderRadius: BorderRadius.circular(AppRadius.full),
+                              border: Border.all(
+                                color: delivery.status.color,
+                                width: 1,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  delivery.status.icon,
+                                  color: delivery.status.color,
+                                  size: 14,
+                                ),
+                                const SizedBox(width: AppSpacing.xs),
+                                Text(
+                                  delivery.status.label,
+                                  style: AppTypography.labelSmall.copyWith(
+                                    color: delivery.status.color,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ],
-                    ),
-
-                    // Botão voltar
-                    Positioned(
-                      top: MediaQuery.of(context).padding.top + 8,
-                      left: AppSpacing.lg,
-                      child: GestureDetector(
-                        onTap: () => context.go('/client/home'),
-                        child: Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: AppColors.background,
-                            borderRadius: BorderRadius.circular(AppRadius.sm),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.3),
-                                blurRadius: 10,
-                              ),
-                            ],
-                          ),
-                          child: const Icon(
-                            Icons.arrow_back_rounded,
-                            color: AppColors.textPrimary,
-                            size: 22,
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    // Badge de status no topo
-                    Positioned(
-                      top: MediaQuery.of(context).padding.top + 8,
-                      right: AppSpacing.lg,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppSpacing.md,
-                          vertical: AppSpacing.sm,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.background,
-                          borderRadius: BorderRadius.circular(AppRadius.full),
-                          border: Border.all(
-                            color: delivery.status.color,
-                            width: 1,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              delivery.status.icon,
-                              color: delivery.status.color,
-                              size: 14,
-                            ),
-                            const SizedBox(width: AppSpacing.xs),
-                            Text(
-                              delivery.status.label,
-                              style: AppTypography.labelSmall.copyWith(
-                                color: delivery.status.color,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
+                    );
+                  },
                 ),
               ),
 
@@ -435,16 +480,28 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
                                       CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      delivery.motoboyName ?? 'Motoboy',
+                                      delivery.motoboyName ?? 'Entregador',
                                       style: AppTypography.h4,
                                     ),
-                                    if (delivery.motoboyPlate != null)
-                                      Text(
-                                        delivery.motoboyPlate!,
-                                        style: AppTypography.mono.copyWith(
-                                          color: AppColors.primary,
-                                        ),
-                                      ),
+                                    const SizedBox(height: 3),
+                                    Row(
+                                      children: [
+                                        VehicleBadge(
+                                            category:
+                                                delivery.vehicleCategory),
+                                        if (delivery.motoboyPlate != null) ...[
+                                          const SizedBox(width: AppSpacing.xs),
+                                          Text(
+                                            delivery.motoboyPlate!,
+                                            style:
+                                                AppTypography.mono.copyWith(
+                                              color: AppColors.primary,
+                                              fontSize: 11,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
                                   ],
                                 ),
                               ),

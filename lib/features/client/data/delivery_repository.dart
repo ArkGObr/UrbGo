@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/constants/vehicle_categories.dart';
 import '../domain/delivery_model.dart';
 
 class DeliveryRepository {
@@ -18,6 +19,7 @@ class DeliveryRepository {
     required double deliveryLng,
     required double value,
     required String paymentMethod,
+    VehicleCategory vehicleCategory = VehicleCategory.motoboy,
   }) async {
     final commission = value * 0.25;
     final data = await _db
@@ -33,6 +35,7 @@ class DeliveryRepository {
           'value': value,
           'commission': commission,
           'payment_method': paymentMethod,
+          'vehicle_category': vehicleCategory.info.id,
           'status': 'pending',
         })
         .select(_selectWithMotoboy)

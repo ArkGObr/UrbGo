@@ -3,7 +3,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
 
-class PrimaryButton extends StatelessWidget {
+class PrimaryButton extends StatefulWidget {
   final String label;
   final VoidCallback? onPressed;
   final bool isLoading;
@@ -18,17 +18,55 @@ class PrimaryButton extends StatelessWidget {
   });
 
   @override
+  State<PrimaryButton> createState() => _PrimaryButtonState();
+}
+
+class _PrimaryButtonState extends State<PrimaryButton>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _scaleAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 100),
+      reverseDuration: const Duration(milliseconds: 180),
+    );
+    _scaleAnim = Tween<double>(begin: 1.0, end: 0.96).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  bool get _enabled => widget.onPressed != null && !widget.isLoading;
+
+  @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: width ?? double.infinity,
-      height: 56,
-      child: DecoratedBox(
+    return AnimatedBuilder(
+      animation: _scaleAnim,
+      builder: (_, child) => Transform.scale(
+        scale: _scaleAnim.value,
+        child: child,
+      ),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: widget.width ?? double.infinity,
+        height: 56,
         decoration: BoxDecoration(
-          color: onPressed != null ? AppColors.primary : AppColors.primary.withValues(alpha:0.4),
+          color: _enabled
+              ? AppColors.primary
+              : AppColors.primary.withValues(alpha: 0.4),
           borderRadius: BorderRadius.circular(AppRadius.md),
-          boxShadow: onPressed != null
-              ? [
-                  const BoxShadow(
+          boxShadow: _enabled
+              ? const [
+                  BoxShadow(
                     color: AppColors.primaryGlow,
                     blurRadius: 20,
                     offset: Offset(0, 4),
@@ -40,19 +78,34 @@ class PrimaryButton extends StatelessWidget {
           color: Colors.transparent,
           child: InkWell(
             borderRadius: BorderRadius.circular(AppRadius.md),
-            splashColor: AppColors.primaryDark.withValues(alpha:0.3),
-            onTap: isLoading ? null : onPressed,
+            splashColor: AppColors.primaryDark.withValues(alpha: 0.3),
+            onTapDown: _enabled ? (_) => _ctrl.forward() : null,
+            onTapUp: _enabled
+                ? (_) {
+                    _ctrl.reverse();
+                    widget.onPressed?.call();
+                  }
+                : null,
+            onTapCancel: _enabled ? () => _ctrl.reverse() : null,
             child: Center(
-              child: isLoading
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        color: AppColors.textInverse,
-                        strokeWidth: 2.5,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                child: widget.isLoading
+                    ? const SizedBox(
+                        key: ValueKey('loading'),
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          color: AppColors.textInverse,
+                          strokeWidth: 2.5,
+                        ),
+                      )
+                    : Text(
+                        widget.label,
+                        key: ValueKey(widget.label),
+                        style: AppTypography.button,
                       ),
-                    )
-                  : Text(label, style: AppTypography.button),
+              ),
             ),
           ),
         ),
@@ -86,19 +139,24 @@ class SecondaryButton extends StatelessWidget {
           ),
         ),
         onPressed: isLoading ? null : onPressed,
-        child: isLoading
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  color: AppColors.primary,
-                  strokeWidth: 2.5,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          child: isLoading
+              ? const SizedBox(
+                  key: ValueKey('loading'),
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    color: AppColors.primary,
+                    strokeWidth: 2.5,
+                  ),
+                )
+              : Text(
+                  label,
+                  key: ValueKey(label),
+                  style: AppTypography.button.copyWith(color: AppColors.primary),
                 ),
-              )
-            : Text(
-                label,
-                style: AppTypography.button.copyWith(color: AppColors.primary),
-              ),
+        ),
       ),
     );
   }

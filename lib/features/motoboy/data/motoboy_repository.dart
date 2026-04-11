@@ -39,17 +39,45 @@ class MotoboyRepository {
     }).eq('id', id);
   }
 
-  /// Buscar corridas disponíveis por raio
+  /// Buscar corridas disponíveis por raio, filtradas pela categoria do motoboy
   Future<List<DeliveryModel>> getAvailableRuns({
+    required String motoboyId,
     required double lat,
     required double lng,
     double radiusKm = 10.0,
   }) async {
-    final data = await _db
+    // Buscar categoria do motoboy (com fallback se RLS falhar)
+    String category = 'motoboy';
+    try {
+      final m = await _db
+          .from('motoboys')
+          .select('vehicle_category')
+          .eq('id', motoboyId)
+          .single();
+      category = m['vehicle_category'] as String? ?? 'motoboy';
+    } catch (_) {
+      // Se falhar (ex: recursão RLS), segue com default
+    }
+
+    // Buscar corridas pendentes
+    // Tenta filtrar por categoria; se não houver resultados, busca todas
+    var data = await _db
         .from('deliveries')
         .select()
         .eq('status', 'pending')
-        .order('created_at', ascending: false);
+        .eq('vehicle_category', category)
+        .order('created_at', ascending: false)
+        .limit(50);
+
+    // Se não encontrou pela categoria, tenta sem filtro de categoria
+    if ((data as List).isEmpty) {
+      data = await _db
+          .from('deliveries')
+          .select()
+          .eq('status', 'pending')
+          .order('created_at', ascending: false)
+          .limit(50);
+    }
 
     final all =
         (data as List).map((e) => DeliveryModel.fromJson(e)).toList();

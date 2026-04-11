@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/vehicle_categories.dart';
 
 enum DeliveryStatus {
   pending,
@@ -25,8 +26,8 @@ enum DeliveryStatus {
       };
 
   String get label => switch (this) {
-        pending => 'Aguardando motoboy',
-        accepted => 'Motoboy a caminho',
+        pending => 'Aguardando entregador',
+        accepted => 'Entregador a caminho',
         inProgress => 'Em rota de entrega',
         completed => 'Entregue',
         cancelled => 'Cancelado',
@@ -61,6 +62,7 @@ class DeliveryModel {
   final double deliveryLng;
   final double value;
   final double commission;
+  final VehicleCategory vehicleCategory;
   final DeliveryStatus status;
   final String paymentMethod;
   final DateTime createdAt;
@@ -85,6 +87,7 @@ class DeliveryModel {
     required this.deliveryLng,
     required this.value,
     required this.commission,
+    required this.vehicleCategory,
     required this.status,
     required this.paymentMethod,
     required this.createdAt,
@@ -115,6 +118,9 @@ class DeliveryModel {
       deliveryLng: (json['delivery_lng'] as num).toDouble(),
       value: (json['value'] as num).toDouble(),
       commission: (json['commission'] as num).toDouble(),
+      vehicleCategory: VehicleCategoryExtension.fromId(
+        json['vehicle_category'] as String? ?? 'motoboy',
+      ),
       status: DeliveryStatus.fromString(json['status'] as String),
       paymentMethod: json['payment_method'] as String,
       createdAt: DateTime.parse(json['created_at'] as String),
@@ -150,6 +156,7 @@ class DeliveryModel {
     double? deliveryLng,
     double? value,
     double? commission,
+    VehicleCategory? vehicleCategory,
     DeliveryStatus? status,
     String? paymentMethod,
     DateTime? createdAt,
@@ -173,6 +180,7 @@ class DeliveryModel {
       deliveryLng: deliveryLng ?? this.deliveryLng,
       value: value ?? this.value,
       commission: commission ?? this.commission,
+      vehicleCategory: vehicleCategory ?? this.vehicleCategory,
       status: status ?? this.status,
       paymentMethod: paymentMethod ?? this.paymentMethod,
       createdAt: createdAt ?? this.createdAt,

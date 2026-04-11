@@ -1,3 +1,5 @@
+import '../../../core/constants/vehicle_categories.dart';
+
 class MotoboyModel {
   final String id;
   final String name;
@@ -8,6 +10,9 @@ class MotoboyModel {
   final double? currentLng;
   final String? vehiclePlate;
   final String? cpf;
+  final VehicleCategory vehicleCategory;
+  final String? vehicleModel;
+  final int? vehicleYear;
 
   const MotoboyModel({
     required this.id,
@@ -19,13 +24,15 @@ class MotoboyModel {
     this.currentLng,
     this.vehiclePlate,
     this.cpf,
+    this.vehicleCategory = VehicleCategory.motoboy,
+    this.vehicleModel,
+    this.vehicleYear,
   });
 
   /// Retorna true se tem saldo suficiente para aceitar a corrida
   bool canAccept(double commission) => walletBalance >= commission;
 
   factory MotoboyModel.fromJson(Map<String, dynamic> json) {
-    // O join com users pode vir como sub-objeto
     final users = json['users'] as Map<String, dynamic>?;
 
     return MotoboyModel(
@@ -38,6 +45,11 @@ class MotoboyModel {
       currentLng: (json['current_lng'] as num?)?.toDouble(),
       vehiclePlate: json['vehicle_plate'] as String?,
       cpf: json['cpf'] as String?,
+      vehicleCategory: VehicleCategoryExtension.fromId(
+        json['vehicle_category'] as String? ?? 'motoboy',
+      ),
+      vehicleModel: json['vehicle_model'] as String?,
+      vehicleYear: json['vehicle_year'] as int?,
     );
   }
 
@@ -51,6 +63,9 @@ class MotoboyModel {
     double? currentLng,
     String? vehiclePlate,
     String? cpf,
+    VehicleCategory? vehicleCategory,
+    String? vehicleModel,
+    int? vehicleYear,
   }) {
     return MotoboyModel(
       id: id ?? this.id,
@@ -62,6 +77,9 @@ class MotoboyModel {
       currentLng: currentLng ?? this.currentLng,
       vehiclePlate: vehiclePlate ?? this.vehiclePlate,
       cpf: cpf ?? this.cpf,
+      vehicleCategory: vehicleCategory ?? this.vehicleCategory,
+      vehicleModel: vehicleModel ?? this.vehicleModel,
+      vehicleYear: vehicleYear ?? this.vehicleYear,
     );
   }
 }

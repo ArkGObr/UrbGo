@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/services/notification_service.dart';
 import '../data/auth_repository.dart';
 import 'user_model.dart';
 
@@ -19,7 +20,12 @@ class AuthNotifier extends AsyncNotifier<UserModel?> {
     final delay = Future.delayed(const Duration(seconds: 2));
     final user = await ref.read(authRepositoryProvider).getSessionUser();
     await delay;
-    
+
+    // Inicializa FCM e salva token para o usuário logado
+    if (user != null) {
+      _initNotifications(user.id);
+    }
+
     return user;
   }
 
@@ -30,6 +36,9 @@ class AuthNotifier extends AsyncNotifier<UserModel?> {
     required String phone,
     required String role,
     String? vehiclePlate,
+    String? vehicleCategory,
+    String? vehicleModel,
+    int? vehicleYear,
   }) async {
     state = const AsyncValue.loading();
 
@@ -41,14 +50,17 @@ class AuthNotifier extends AsyncNotifier<UserModel?> {
             phone: phone,
             role: role,
             vehiclePlate: vehiclePlate,
+            vehicleCategory: vehicleCategory,
+            vehicleModel: vehicleModel,
+            vehicleYear: vehicleYear,
           ),
     );
 
     if (result.hasError) {
-      // Restaura estado anterior para não ficar preso
       state = AsyncValue.error(result.error!, result.stackTrace!);
     } else {
       state = result;
+      if (result.value != null) _initNotifications(result.value!.id);
     }
   }
 
@@ -69,12 +81,27 @@ class AuthNotifier extends AsyncNotifier<UserModel?> {
       state = AsyncValue.error(result.error!, result.stackTrace!);
     } else {
       state = result;
+      if (result.value != null) _initNotifications(result.value!.id);
     }
   }
 
   Future<void> signOut() async {
+    final userId = state.valueOrNull?.id;
     await ref.read(authRepositoryProvider).signOut();
+    if (userId != null) {
+      await ref.read(notificationServiceProvider).clearToken(userId);
+    }
     state = const AsyncValue.data(null);
+  }
+
+  void _initNotifications(String userId) {
+    final notif = ref.read(notificationServiceProvider);
+    notif.initialize();
+    notif.saveToken(userId);
+    notif.setNavigationCallbacks(
+      clientTracking: (id) => '/client/tracking/$id',
+      motoboyActive:  (id) => '/motoboy/active/$id',
+    );
   }
 }
 

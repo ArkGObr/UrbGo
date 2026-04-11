@@ -13,6 +13,7 @@ import '../features/motoboy/presentation/motoboy_home_screen.dart';
 import '../features/motoboy/presentation/available_runs_screen.dart';
 import '../features/motoboy/presentation/active_run_screen.dart';
 import '../features/motoboy/presentation/wallet_screen.dart';
+import 'page_transitions.dart';
 
 class _RouterNotifier extends ChangeNotifier {
   _RouterNotifier(Ref ref) {
@@ -68,32 +69,93 @@ final routerProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
-      GoRoute(path: '/splash',   builder: (_, __) => const SplashScreen()),
-      GoRoute(path: '/login',    builder: (_, __) => const LoginScreen()),
-      GoRoute(path: '/register', builder: (_, __) => const RegisterScreen()),
+      // ── Auth (fade through) ────────────────────────────────
+      GoRoute(
+        path: '/splash',
+        pageBuilder: (_, state) => fadeThroughTransition(
+          key: state.pageKey,
+          child: const SplashScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/login',
+        pageBuilder: (_, state) => fadeThroughTransition(
+          key: state.pageKey,
+          child: const LoginScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/register',
+        pageBuilder: (_, state) => slideUpFadeTransition(
+          key: state.pageKey,
+          child: const RegisterScreen(),
+        ),
+      ),
+
+      // ── Cliente ────────────────────────────────────────────
       ShellRoute(
         builder: (_, __, child) => child,
         routes: [
-          GoRoute(path: '/client/home',   builder: (_, __) => const ClientHomeScreen()),
-          GoRoute(path: '/client/create', builder: (_, __) => const CreateDeliveryScreen()),
+          GoRoute(
+            path: '/client/home',
+            pageBuilder: (_, state) => fadeThroughTransition(
+              key: state.pageKey,
+              child: const ClientHomeScreen(),
+            ),
+          ),
+          GoRoute(
+            path: '/client/create',
+            pageBuilder: (_, state) => slideUpFadeTransition(
+              key: state.pageKey,
+              child: const CreateDeliveryScreen(),
+            ),
+          ),
           GoRoute(
             path: '/client/tracking/:id',
-            builder: (_, state) =>
-                TrackingScreen(deliveryId: state.pathParameters['id']!),
+            pageBuilder: (_, state) => slideUpFadeTransition(
+              key: state.pageKey,
+              child: TrackingScreen(
+                deliveryId: state.pathParameters['id']!,
+              ),
+            ),
           ),
         ],
       ),
+
+      // ── Motoboy ────────────────────────────────────────────
       ShellRoute(
         builder: (_, __, child) => child,
         routes: [
-          GoRoute(path: '/motoboy/home',   builder: (_, __) => const MotoboyHomeScreen()),
-          GoRoute(path: '/motoboy/runs',   builder: (_, __) => const AvailableRunsScreen()),
+          GoRoute(
+            path: '/motoboy/home',
+            pageBuilder: (_, state) => fadeThroughTransition(
+              key: state.pageKey,
+              child: const MotoboyHomeScreen(),
+            ),
+          ),
+          GoRoute(
+            path: '/motoboy/runs',
+            pageBuilder: (_, state) => slideUpFadeTransition(
+              key: state.pageKey,
+              child: const AvailableRunsScreen(),
+            ),
+          ),
           GoRoute(
             path: '/motoboy/active/:id',
-            builder: (_, state) =>
-                ActiveRunScreen(deliveryId: state.pathParameters['id']!),
+            pageBuilder: (_, state) => slideUpFadeTransition(
+              key: state.pageKey,
+              child: ActiveRunScreen(
+                deliveryId: state.pathParameters['id']!,
+              ),
+            ),
           ),
-          GoRoute(path: '/motoboy/wallet', builder: (_, __) => const WalletScreen()),
+          GoRoute(
+            path: '/motoboy/wallet',
+            pageBuilder: (_, state) => slideUpFadeTransition(
+              key: state.pageKey,
+              child: const WalletScreen(),
+            ),
+          ),
         ],
       ),
     ],

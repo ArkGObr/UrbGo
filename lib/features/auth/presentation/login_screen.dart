@@ -5,6 +5,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/utils/validators.dart';
+import '../../shared/widgets/micro_interactions.dart';
 import '../../shared/widgets/primary_button.dart';
 import '../domain/auth_provider.dart';
 
@@ -94,93 +95,114 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 const SizedBox(height: AppSpacing.xl4),
 
                 // Logo
-                Row(
-                  children: [
-                    Image.asset(
-                      'assets/logo.png',
-                      width: 48,
-                      height: 48,
-                      fit: BoxFit.contain,
-                    ),
-                    const SizedBox(width: AppSpacing.md),
-                    RichText(
-                      text: TextSpan(
-                        style: AppTypography.h1,
-                        children: [
-                          const TextSpan(text: 'Urb'),
-                          TextSpan(
-                            text: 'Go',
-                            style: AppTypography.h1.copyWith(color: AppColors.primary),
-                          ),
-                        ],
+                FadeSlideIn(
+                  delay: const Duration(milliseconds: 100),
+                  child: Row(
+                    children: [
+                      Image.asset(
+                        'assets/logo.png',
+                        width: 48,
+                        height: 48,
+                        fit: BoxFit.contain,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: AppSpacing.md),
+                      RichText(
+                        text: TextSpan(
+                          style: AppTypography.h1,
+                          children: [
+                            const TextSpan(text: 'Urb'),
+                            TextSpan(
+                              text: 'Go',
+                              style: AppTypography.h1.copyWith(color: AppColors.primary),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: AppSpacing.xl2),
 
-                Text('Entrar na conta', style: AppTypography.display2),
-                const SizedBox(height: AppSpacing.sm),
-                Text('Sua entrega em movimento', style: AppTypography.bodyLarge),
+                FadeSlideIn(
+                  delay: const Duration(milliseconds: 200),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Entrar na conta', style: AppTypography.display2),
+                      const SizedBox(height: AppSpacing.sm),
+                      Text('Sua entrega em movimento', style: AppTypography.bodyLarge),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: AppSpacing.xl4),
 
-                // E-mail
-                TextFormField(
-                  controller: _emailCtrl,
-                  keyboardType: TextInputType.emailAddress,
-                  textInputAction: TextInputAction.next,
-                  style: AppTypography.bodyLarge.copyWith(
-                    color: AppColors.textPrimary,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'E-mail',
-                    prefixIcon: Icon(
-                      Icons.email_outlined,
-                      color: AppColors.textTertiary,
-                      size: 20,
-                    ),
-                  ),
-                  validator: Validators.email,
-                ),
-                const SizedBox(height: AppSpacing.lg),
-
-                // Senha
-                TextFormField(
-                  controller: _passwordCtrl,
-                  obscureText: _obscurePassword,
-                  textInputAction: TextInputAction.done,
-                  onFieldSubmitted: (_) => _submit(),
-                  style: AppTypography.bodyLarge.copyWith(
-                    color: AppColors.textPrimary,
-                  ),
-                  decoration: InputDecoration(
-                    labelText: 'Senha',
-                    prefixIcon: const Icon(
-                      Icons.lock_outlined,
-                      color: AppColors.textTertiary,
-                      size: 20,
-                    ),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscurePassword
-                            ? Icons.visibility_outlined
-                            : Icons.visibility_off_outlined,
-                        color: AppColors.textTertiary,
-                        size: 20,
+                FadeSlideIn(
+                  delay: const Duration(milliseconds: 300),
+                  child: Column(
+                    children: [
+                      // E-mail
+                      TextFormField(
+                        controller: _emailCtrl,
+                        keyboardType: TextInputType.emailAddress,
+                        textInputAction: TextInputAction.next,
+                        style: AppTypography.bodyLarge.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'E-mail',
+                          prefixIcon: Icon(
+                            Icons.email_outlined,
+                            color: AppColors.textTertiary,
+                            size: 20,
+                          ),
+                        ),
+                        validator: Validators.email,
                       ),
-                      onPressed: () =>
-                          setState(() => _obscurePassword = !_obscurePassword),
-                    ),
+                      const SizedBox(height: AppSpacing.lg),
+
+                      // Senha
+                      TextFormField(
+                        controller: _passwordCtrl,
+                        obscureText: _obscurePassword,
+                        textInputAction: TextInputAction.done,
+                        onFieldSubmitted: (_) => _submit(),
+                        style: AppTypography.bodyLarge.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: 'Senha',
+                          prefixIcon: const Icon(
+                            Icons.lock_outlined,
+                            color: AppColors.textTertiary,
+                            size: 20,
+                          ),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                              color: AppColors.textTertiary,
+                              size: 20,
+                            ),
+                            onPressed: () =>
+                                setState(() => _obscurePassword = !_obscurePassword),
+                          ),
+                        ),
+                        validator: Validators.password,
+                      ),
+                    ],
                   ),
-                  validator: Validators.password,
                 ),
                 const SizedBox(height: AppSpacing.xl3),
 
                 // Botão entrar
-                PrimaryButton(
-                  label: 'Entrar',
-                  onPressed: isLoading ? null : _submit,
-                  isLoading: isLoading,
+                FadeSlideIn(
+                  delay: const Duration(milliseconds: 450),
+                  child: PrimaryButton(
+                    label: 'Entrar',
+                    onPressed: isLoading ? null : _submit,
+                    isLoading: isLoading,
+                  ),
                 ),
                 const SizedBox(height: AppSpacing.xl2),
 

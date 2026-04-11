@@ -5,10 +5,13 @@ import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/constants/vehicle_categories.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../auth/domain/auth_provider.dart';
 import '../../client/domain/delivery_model.dart';
+import '../../shared/widgets/micro_interactions.dart';
 import '../../shared/widgets/primary_button.dart';
+import '../../shared/widgets/vehicle_badge.dart';
 import '../data/motoboy_repository.dart';
 import '../domain/motoboy_providers.dart';
 
@@ -154,6 +157,8 @@ class _AvailableRunsScreenState extends ConsumerState<AvailableRunsScreen> {
   @override
   Widget build(BuildContext context) {
     final runsAsync = ref.watch(availableRunsProvider);
+    final motoboyAsync = ref.watch(motoboyStreamProvider);
+    final categoryName = motoboyAsync.valueOrNull?.vehicleCategory.info.name;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -164,7 +169,21 @@ class _AvailableRunsScreenState extends ConsumerState<AvailableRunsScreen> {
           icon: const Icon(Icons.arrow_back_rounded, color: AppColors.textPrimary),
           onPressed: () => context.pop(),
         ),
-        title: Text('Corridas Disponíveis', style: AppTypography.h3),
+        title: categoryName != null
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Corridas Disponíveis', style: AppTypography.h3),
+                  Text(
+                    categoryName,
+                    style: AppTypography.labelSmall.copyWith(
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ],
+              )
+            : Text('Corridas Disponíveis', style: AppTypography.h3),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded, color: AppColors.primary),
@@ -180,63 +199,80 @@ class _AvailableRunsScreenState extends ConsumerState<AvailableRunsScreen> {
             strokeWidth: 2,
           ),
         ),
-        error: (e, _) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline, color: AppColors.error, size: 48),
-              const SizedBox(height: AppSpacing.lg),
-              Text('Erro ao carregar corridas', style: AppTypography.h3),
-              const SizedBox(height: AppSpacing.lg),
-              TextButton.icon(
-                onPressed: () => ref.invalidate(availableRunsProvider),
-                icon: const Icon(Icons.refresh_rounded,
-                    color: AppColors.primary),
-                label: Text(
-                  'Tentar novamente',
-                  style: AppTypography.labelLarge
-                      .copyWith(color: AppColors.primary),
+        error: (e, _) {
+          debugPrint('[AvailableRuns] Erro: $e');
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline, color: AppColors.error, size: 48),
+                const SizedBox(height: AppSpacing.lg),
+                Text('Erro ao carregar corridas', style: AppTypography.h3),
+                const SizedBox(height: AppSpacing.sm),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl3),
+                  child: Text(
+                    '$e',
+                    textAlign: TextAlign.center,
+                    style: AppTypography.bodySmall,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ),
+                const SizedBox(height: AppSpacing.lg),
+                TextButton.icon(
+                  onPressed: () => ref.invalidate(availableRunsProvider),
+                  icon: const Icon(Icons.refresh_rounded,
+                      color: AppColors.primary),
+                  label: Text(
+                    'Tentar novamente',
+                    style: AppTypography.labelLarge
+                        .copyWith(color: AppColors.primary),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
         data: (runs) {
           if (runs.isEmpty) {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(AppSpacing.xl4),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(AppRadius.xl),
-                        border: Border.all(color: AppColors.surfaceBorder),
+                child: FadeSlideIn(
+                  delay: const Duration(milliseconds: 200),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          borderRadius: BorderRadius.circular(AppRadius.xl),
+                          border: Border.all(color: AppColors.surfaceBorder),
+                        ),
+                        child: const Icon(
+                          Icons.search_off_rounded,
+                          color: AppColors.textTertiary,
+                          size: 40,
+                        ),
                       ),
-                      child: const Icon(
-                        Icons.search_off_rounded,
-                        color: AppColors.textTertiary,
-                        size: 40,
+                      const SizedBox(height: AppSpacing.xl2),
+                      Text(
+                        'Nenhuma corrida na sua região',
+                        style: AppTypography.h3.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: AppSpacing.xl2),
-                    Text(
-                      'Nenhuma corrida na sua região',
-                      style: AppTypography.h3.copyWith(
-                        color: AppColors.textSecondary,
+                      const SizedBox(height: AppSpacing.sm),
+                      Text(
+                        'Novas corridas aparecem automaticamente',
+                        style: AppTypography.bodyMedium,
+                        textAlign: TextAlign.center,
                       ),
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                    Text(
-                      'Novas corridas aparecem automaticamente',
-                      style: AppTypography.bodyMedium,
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             );
@@ -254,10 +290,13 @@ class _AvailableRunsScreenState extends ConsumerState<AvailableRunsScreen> {
               itemCount: runs.length,
               separatorBuilder: (_, __) =>
                   const SizedBox(height: AppSpacing.md),
-              itemBuilder: (_, i) => _RunCard(
-                delivery: runs[i],
-                isAccepting: _isAccepting && _acceptingId == runs[i].id,
-                onAccept: () => _acceptRun(runs[i]),
+              itemBuilder: (_, i) => StaggeredListItem(
+                index: i,
+                child: _RunCard(
+                  delivery: runs[i],
+                  isAccepting: _isAccepting && _acceptingId == runs[i].id,
+                  onAccept: () => _acceptRun(runs[i]),
+                ),
               ),
             ),
           );
@@ -357,7 +396,35 @@ class _RunCard extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.lg),
 
-          // Info chips
+          // Badge de categoria + valor líquido
+          Row(
+            children: [
+              VehicleBadge(category: delivery.vehicleCategory),
+              const Spacer(),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    'Você recebe',
+                    style: AppTypography.labelSmall.copyWith(
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                  Text(
+                    CurrencyFormatter.format(
+                      PriceCalculator.netValue(delivery.value),
+                    ),
+                    style: AppTypography.numericMedium.copyWith(
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+
+          // Info chips: distância
           Row(
             children: [
               _InfoChip(
@@ -367,14 +434,7 @@ class _RunCard extends StatelessWidget {
               const SizedBox(width: AppSpacing.sm),
               _InfoChip(
                 icon: Icons.attach_money_rounded,
-                label: CurrencyFormatter.format(delivery.value),
-                highlight: true,
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              _InfoChip(
-                icon: Icons.percent_rounded,
-                label: CurrencyFormatter.format(delivery.commission),
-                isDebit: true,
+                label: 'Total ${CurrencyFormatter.format(delivery.value)}',
               ),
             ],
           ),
@@ -396,23 +456,15 @@ class _RunCard extends StatelessWidget {
 class _InfoChip extends StatelessWidget {
   final IconData icon;
   final String label;
-  final bool highlight;
-  final bool isDebit;
 
   const _InfoChip({
     required this.icon,
     required this.label,
-    this.highlight = false,
-    this.isDebit = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final color = isDebit
-        ? AppColors.error
-        : highlight
-            ? AppColors.primary
-            : AppColors.textSecondary;
+    const color = AppColors.textSecondary;
 
     return Expanded(
       child: Container(

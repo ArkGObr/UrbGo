@@ -4,8 +4,10 @@ import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/connectivity_service.dart';
 import '../../auth/domain/auth_provider.dart';
 import '../../shared/widgets/delivery_card.dart';
+import '../../shared/widgets/micro_interactions.dart';
 import '../domain/client_providers.dart';
 
 class ClientHomeScreen extends ConsumerWidget {
@@ -15,7 +17,8 @@ class ClientHomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final deliveriesAsync = ref.watch(clientDeliveriesProvider);
 
-    return Scaffold(
+    return OfflineBanner(
+      child: Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: AppColors.background,
@@ -119,7 +122,9 @@ class ClientHomeScreen extends ConsumerWidget {
                     count: active.length,
                   ),
                   const SizedBox(height: AppSpacing.md),
-                  ...active.map((d) => DeliveryCard(delivery: d)),
+                  ...active.asMap().entries.map(
+                    (e) => DeliveryCard(delivery: e.value, index: e.key),
+                  ),
                   const SizedBox(height: AppSpacing.xl2),
                 ],
 
@@ -130,7 +135,12 @@ class ClientHomeScreen extends ConsumerWidget {
                     count: history.length,
                   ),
                   const SizedBox(height: AppSpacing.md),
-                  ...history.map((d) => DeliveryCard(delivery: d)),
+                  ...history.asMap().entries.map(
+                    (e) => DeliveryCard(
+                      delivery: e.value,
+                      index: e.key + active.length,
+                    ),
+                  ),
                 ],
 
                 // Espaço para FAB
@@ -140,7 +150,7 @@ class ClientHomeScreen extends ConsumerWidget {
           );
         },
       ),
-    );
+    )); // OfflineBanner
   }
 }
 
@@ -188,35 +198,38 @@ class _EmptyState extends StatelessWidget {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.xl4),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(AppRadius.xl),
-                border: Border.all(color: AppColors.surfaceBorder),
+        child: FadeSlideIn(
+          delay: const Duration(milliseconds: 200),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(AppRadius.xl),
+                  border: Border.all(color: AppColors.surfaceBorder),
+                ),
+                child: const Icon(
+                  Icons.two_wheeler_rounded,
+                  color: AppColors.textTertiary,
+                  size: 40,
+                ),
               ),
-              child: const Icon(
-                Icons.two_wheeler_rounded,
-                color: AppColors.textTertiary,
-                size: 40,
+              const SizedBox(height: AppSpacing.xl2),
+              Text(
+                'Nenhuma entrega ainda',
+                style: AppTypography.h3.copyWith(color: AppColors.textSecondary),
               ),
-            ),
-            const SizedBox(height: AppSpacing.xl2),
-            Text(
-              'Nenhuma entrega ainda',
-              style: AppTypography.h3.copyWith(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              'Toque no botão abaixo para\ncriar seu primeiro pedido',
-              style: AppTypography.bodyMedium,
-              textAlign: TextAlign.center,
-            ),
-          ],
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                'Toque no botão abaixo para\ncriar seu primeiro pedido',
+                style: AppTypography.bodyMedium,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       ),
     );

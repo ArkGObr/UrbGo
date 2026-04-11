@@ -5,7 +5,9 @@ import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/constants/vehicle_categories.dart';
 import '../../../core/utils/validators.dart';
+import '../../shared/widgets/category_selector.dart';
 import '../../shared/widgets/primary_button.dart';
 import '../domain/auth_provider.dart';
 
@@ -24,10 +26,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _passwordCtrl = TextEditingController();
   final _confirmPasswordCtrl = TextEditingController();
   final _plateCtrl = TextEditingController();
+  final _modelCtrl = TextEditingController();
+  final _yearCtrl = TextEditingController();
 
   String _selectedRole = 'client';
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
+  VehicleCategoryInfo? _selectedCategory;
 
   @override
   void dispose() {
@@ -37,11 +42,18 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _passwordCtrl.dispose();
     _confirmPasswordCtrl.dispose();
     _plateCtrl.dispose();
+    _modelCtrl.dispose();
+    _yearCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+
+    if (_selectedRole == 'motoboy' && _selectedCategory == null) {
+      _showError('Selecione o tipo de veículo para continuar.');
+      return;
+    }
 
     await ref.read(authNotifierProvider.notifier).signUp(
           email: _emailCtrl.text.trim(),
@@ -49,7 +61,19 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           name: _nameCtrl.text.trim(),
           phone: _phoneCtrl.text.trim(),
           role: _selectedRole,
-          vehiclePlate: _selectedRole == 'motoboy' ? _plateCtrl.text.trim() : null,
+          vehiclePlate:
+              _selectedRole == 'motoboy' ? _plateCtrl.text.trim() : null,
+          vehicleCategory: _selectedRole == 'motoboy'
+              ? (_selectedCategory?.id ?? 'motoboy')
+              : null,
+          vehicleModel: _selectedRole == 'motoboy'
+              ? _modelCtrl.text.trim().isEmpty
+                  ? null
+                  : _modelCtrl.text.trim()
+              : null,
+          vehicleYear: _selectedRole == 'motoboy'
+              ? int.tryParse(_yearCtrl.text.trim())
+              : null,
         );
 
     if (!mounted) return;
@@ -61,7 +85,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   }
 
   void _showError(String message) {
-    final isEmailUsed = message.contains('already') || message.contains('registered');
+    final isEmailUsed =
+        message.contains('already') || message.contains('registered');
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -153,7 +178,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     Expanded(
                       child: _RoleCard(
                         icon: Icons.two_wheeler_rounded,
-                        label: 'Sou Motoboy',
+                        label: 'Sou Entregador',
                         subtitle: 'Faço entregas',
                         value: 'motoboy',
                         selected: _selectedRole == 'motoboy',
@@ -169,10 +194,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   controller: _nameCtrl,
                   textCapitalization: TextCapitalization.words,
                   textInputAction: TextInputAction.next,
-                  style: AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
+                  style: AppTypography.bodyLarge
+                      .copyWith(color: AppColors.textPrimary),
                   decoration: const InputDecoration(
                     labelText: 'Nome completo',
-                    prefixIcon: Icon(Icons.person_outlined, color: AppColors.textTertiary, size: 20),
+                    prefixIcon: Icon(Icons.person_outlined,
+                        color: AppColors.textTertiary, size: 20),
                   ),
                   validator: (v) => Validators.required(v, field: 'Nome'),
                 ),
@@ -184,11 +211,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   keyboardType: TextInputType.phone,
                   textInputAction: TextInputAction.next,
                   inputFormatters: [_PhoneMaskFormatter()],
-                  style: AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
+                  style: AppTypography.bodyLarge
+                      .copyWith(color: AppColors.textPrimary),
                   decoration: const InputDecoration(
                     labelText: 'Telefone',
                     hintText: '(00) 00000-0000',
-                    prefixIcon: Icon(Icons.phone_outlined, color: AppColors.textTertiary, size: 20),
+                    prefixIcon: Icon(Icons.phone_outlined,
+                        color: AppColors.textTertiary, size: 20),
                   ),
                   validator: Validators.phone,
                 ),
@@ -199,10 +228,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   controller: _emailCtrl,
                   keyboardType: TextInputType.emailAddress,
                   textInputAction: TextInputAction.next,
-                  style: AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
+                  style: AppTypography.bodyLarge
+                      .copyWith(color: AppColors.textPrimary),
                   decoration: const InputDecoration(
                     labelText: 'E-mail',
-                    prefixIcon: Icon(Icons.email_outlined, color: AppColors.textTertiary, size: 20),
+                    prefixIcon: Icon(Icons.email_outlined,
+                        color: AppColors.textTertiary, size: 20),
                   ),
                   validator: Validators.email,
                 ),
@@ -213,17 +244,22 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   controller: _passwordCtrl,
                   obscureText: _obscurePassword,
                   textInputAction: TextInputAction.next,
-                  style: AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
+                  style: AppTypography.bodyLarge
+                      .copyWith(color: AppColors.textPrimary),
                   decoration: InputDecoration(
                     labelText: 'Senha',
-                    prefixIcon: const Icon(Icons.lock_outlined, color: AppColors.textTertiary, size: 20),
+                    prefixIcon: const Icon(Icons.lock_outlined,
+                        color: AppColors.textTertiary, size: 20),
                     suffixIcon: IconButton(
                       icon: Icon(
-                        _obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                        _obscurePassword
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
                         color: AppColors.textTertiary,
                         size: 20,
                       ),
-                      onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                      onPressed: () =>
+                          setState(() => _obscurePassword = !_obscurePassword),
                     ),
                   ),
                   validator: Validators.password,
@@ -235,17 +271,22 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   controller: _confirmPasswordCtrl,
                   obscureText: _obscureConfirm,
                   textInputAction: TextInputAction.next,
-                  style: AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
+                  style: AppTypography.bodyLarge
+                      .copyWith(color: AppColors.textPrimary),
                   decoration: InputDecoration(
                     labelText: 'Confirmar senha',
-                    prefixIcon: const Icon(Icons.lock_outlined, color: AppColors.textTertiary, size: 20),
+                    prefixIcon: const Icon(Icons.lock_outlined,
+                        color: AppColors.textTertiary, size: 20),
                     suffixIcon: IconButton(
                       icon: Icon(
-                        _obscureConfirm ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                        _obscureConfirm
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
                         color: AppColors.textTertiary,
                         size: 20,
                       ),
-                      onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                      onPressed: () =>
+                          setState(() => _obscureConfirm = !_obscureConfirm),
                     ),
                   ),
                   validator: (v) {
@@ -255,25 +296,89 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   },
                 ),
 
-                // Campo de placa (só para motoboy)
+                // ── Campos exclusivos para entregador ─────────
                 if (_selectedRole == 'motoboy') ...[
-                  const SizedBox(height: AppSpacing.lg),
+                  const SizedBox(height: AppSpacing.xl3),
+
+                  // Seletor de categoria
+                  Text('Tipo de veículo', style: AppTypography.labelLarge),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    'Você só receberá corridas da sua categoria',
+                    style: AppTypography.bodySmall,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  CategorySelectorWidget(
+                    isForDriver: true,
+                    onSelected: (cat) =>
+                        setState(() => _selectedCategory = cat),
+                  ),
+                  const SizedBox(height: AppSpacing.xl2),
+
+                  // Placa
                   TextFormField(
                     controller: _plateCtrl,
                     textCapitalization: TextCapitalization.characters,
-                    textInputAction: TextInputAction.done,
-                    onFieldSubmitted: (_) => _submit(),
-                    style: AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
+                    textInputAction: TextInputAction.next,
+                    style: AppTypography.bodyLarge
+                        .copyWith(color: AppColors.textPrimary),
                     decoration: const InputDecoration(
                       labelText: 'Placa do veículo',
                       hintText: 'Ex: ABC-1234',
-                      prefixIcon: Icon(Icons.two_wheeler_rounded, color: AppColors.textTertiary, size: 20),
+                      prefixIcon: Icon(Icons.two_wheeler_rounded,
+                          color: AppColors.textTertiary, size: 20),
                     ),
                     validator: (v) => _selectedRole == 'motoboy'
                         ? Validators.required(v, field: 'Placa')
                         : null,
                   ),
+                  const SizedBox(height: AppSpacing.lg),
+
+                  // Modelo
+                  TextFormField(
+                    controller: _modelCtrl,
+                    textCapitalization: TextCapitalization.words,
+                    textInputAction: TextInputAction.next,
+                    style: AppTypography.bodyLarge
+                        .copyWith(color: AppColors.textPrimary),
+                    decoration: const InputDecoration(
+                      labelText: 'Modelo do veículo',
+                      hintText: 'Ex: Honda CG 160',
+                      prefixIcon: Icon(Icons.directions_car_outlined,
+                          color: AppColors.textTertiary, size: 20),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+
+                  // Ano
+                  TextFormField(
+                    controller: _yearCtrl,
+                    keyboardType: TextInputType.number,
+                    textInputAction: TextInputAction.done,
+                    onFieldSubmitted: (_) => _submit(),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(4),
+                    ],
+                    style: AppTypography.bodyLarge
+                        .copyWith(color: AppColors.textPrimary),
+                    decoration: const InputDecoration(
+                      labelText: 'Ano do veículo',
+                      hintText: 'Ex: 2021',
+                      prefixIcon: Icon(Icons.calendar_today_outlined,
+                          color: AppColors.textTertiary, size: 20),
+                    ),
+                    validator: (v) {
+                      if (v == null || v.isEmpty) return null; // opcional
+                      final year = int.tryParse(v);
+                      if (year == null || year < 1980 || year > 2030) {
+                        return 'Ano inválido';
+                      }
+                      return null;
+                    },
+                  ),
                 ],
+
                 const SizedBox(height: AppSpacing.xl3),
 
                 // Botão criar conta

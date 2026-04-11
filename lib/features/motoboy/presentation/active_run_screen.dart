@@ -9,9 +9,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/logger_service.dart';
+import '../../../core/services/route_service.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../client/domain/delivery_model.dart';
 import '../../shared/widgets/primary_button.dart';
+import '../../shared/widgets/vehicle_badge.dart';
 import '../domain/motoboy_providers.dart';
 
 /// Provider local para a posição do motoboy em tempo real
@@ -28,16 +31,59 @@ class ActiveRunScreen extends ConsumerStatefulWidget {
 
 class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
   final MapController _mapController = MapController();
+  final RouteService _routeService = RouteService();
   StreamSubscription<Position>? _positionStream;
+  StreamSubscription<ServiceStatus>? _gpsStatusSub;
   bool _isProcessing = false;
   DeliveryModel? _delivery;
   bool _isLoading = true;
+  List<LatLng> _routePoints = [];
 
   @override
   void initState() {
     super.initState();
     _startPositionStream();
+    _startGpsMonitor();
     _loadDelivery();
+  }
+
+  void _startGpsMonitor() {
+    _gpsStatusSub = Geolocator.getServiceStatusStream().listen((status) {
+      if (!mounted) return;
+      if (status == ServiceStatus.disabled) {
+        _showGpsDisabledDialog();
+      }
+    });
+  }
+
+  void _showGpsDisabledDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+        ),
+        title: Text('GPS desativado', style: AppTypography.h3),
+        content: Text(
+          'Ative o GPS para continuar atualizando sua posição durante a entrega.',
+          style: AppTypography.bodyMedium,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Geolocator.openLocationSettings();
+            },
+            child: Text(
+              'Ativar GPS',
+              style: AppTypography.labelLarge.copyWith(color: AppColors.primary),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _loadDelivery() async {
@@ -47,16 +93,31 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
           .select()
           .eq('id', widget.deliveryId)
           .single();
-      if (mounted) {
-        setState(() {
-          _delivery = DeliveryModel.fromJson(data);
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (!mounted) return;
+      final delivery = DeliveryModel.fromJson(data);
+      setState(() {
+        _delivery = delivery;
+        _isLoading = false;
+      });
+
+      // Carrega a rota real após ter as coordenadas
+      final pickup = LatLng(delivery.pickupLat, delivery.pickupLng);
+      final dest = LatLng(delivery.deliveryLat, delivery.deliveryLng);
+      _loadRoute(pickup, dest);
+    } catch (e, stack) {
+      Logger.error('ActiveRunScreen._loadDelivery', e, stack);
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _loadRoute(LatLng from, LatLng to) async {
+    // Enquanto carrega, mostra linha reta
+    if (mounted) setState(() => _routePoints = [from, to]);
+    try {
+      final points = await _routeService.getRoute(from, to);
+      if (mounted) setState(() => _routePoints = points);
+    } catch (_) {
+      // Mantém linha reta como fallback
     }
   }
 
@@ -75,6 +136,7 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
   @override
   void dispose() {
     _positionStream?.cancel();
+    _gpsStatusSub?.cancel();
     _mapController.dispose();
     super.dispose();
   }
@@ -268,9 +330,9 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
     final myPos = ref.watch(_myPositionProvider);
 
     if (_isLoading || _delivery == null) {
-      return Scaffold(
+      return const Scaffold(
         backgroundColor: AppColors.background,
-        body: const Center(
+        body: Center(
           child: CircularProgressIndicator(
             color: AppColors.primary,
             strokeWidth: 2,
@@ -301,18 +363,19 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                   children: [
                     TileLayer(
                       urlTemplate:
-                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
                       userAgentPackageName: 'com.urbgo.app',
                     ),
-                    PolylineLayer(
-                      polylines: [
-                        Polyline(
-                          points: [pickupLatLng, deliveryLatLng],
-                          color: AppColors.primary,
-                          strokeWidth: 4,
-                        ),
-                      ],
-                    ),
+                    if (_routePoints.isNotEmpty)
+                      PolylineLayer(
+                        polylines: [
+                          Polyline(
+                            points: _routePoints,
+                            color: AppColors.primary,
+                            strokeWidth: 4,
+                          ),
+                        ],
+                      ),
                     MarkerLayer(
                       markers: [
                         // Coleta
@@ -417,12 +480,12 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
 
           // ── Card inferior ─────────────────────
           Container(
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               color: AppColors.surface,
-              borderRadius: const BorderRadius.vertical(
+              borderRadius: BorderRadius.vertical(
                 top: Radius.circular(AppRadius.xl),
               ),
-              border: const Border(
+              border: Border(
                 top: BorderSide(color: AppColors.surfaceBorder),
               ),
             ),
@@ -447,33 +510,40 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                     ),
                     const SizedBox(height: AppSpacing.lg),
 
-                    // Status
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        vertical: AppSpacing.md,
-                      ),
-                      decoration: BoxDecoration(
-                        color: delivery.status.color.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(AppRadius.sm),
-                        border: Border.all(
-                          color: delivery.status.color.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(delivery.status.icon,
-                              color: delivery.status.color, size: 20),
-                          const SizedBox(width: AppSpacing.sm),
-                          Text(
-                            delivery.status.label,
-                            style: AppTypography.h4.copyWith(
-                              color: delivery.status.color,
+                    // Categoria + status
+                    Row(
+                      children: [
+                        VehicleBadge(category: delivery.vehicleCategory),
+                        const Spacer(),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.md,
+                            vertical: AppSpacing.xs,
+                          ),
+                          decoration: BoxDecoration(
+                            color: delivery.status.color.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(AppRadius.full),
+                            border: Border.all(
+                              color: delivery.status.color.withValues(alpha: 0.3),
                             ),
                           ),
-                        ],
-                      ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(delivery.status.icon,
+                                  color: delivery.status.color, size: 14),
+                              const SizedBox(width: AppSpacing.xs),
+                              Text(
+                                delivery.status.label,
+                                style: AppTypography.labelSmall.copyWith(
+                                  color: delivery.status.color,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: AppSpacing.lg),
 

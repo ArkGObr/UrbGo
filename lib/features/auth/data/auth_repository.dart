@@ -11,6 +11,9 @@ class AuthRepository {
     required String phone,
     required String role,
     String? vehiclePlate,
+    String? vehicleCategory,
+    String? vehicleModel,
+    int? vehicleYear,
   }) async {
     final response = await _db.auth.signUp(
       email: email,
@@ -43,12 +46,26 @@ class AuthRepository {
           }).eq('id', userId);
 
           // Atualiza placa do motoboy se aplicável
-          if (role == 'motoboy' &&
-              vehiclePlate != null &&
-              vehiclePlate.isNotEmpty) {
-            await _db
-                .from('motoboys')
-                .update({'vehicle_plate': vehiclePlate}).eq('id', userId);
+          if (role == 'motoboy') {
+            final motoboyUpdate = <String, dynamic>{};
+            if (vehiclePlate != null && vehiclePlate.isNotEmpty) {
+              motoboyUpdate['vehicle_plate'] = vehiclePlate;
+            }
+            if (vehicleCategory != null && vehicleCategory.isNotEmpty) {
+              motoboyUpdate['vehicle_category'] = vehicleCategory;
+            }
+            if (vehicleModel != null && vehicleModel.isNotEmpty) {
+              motoboyUpdate['vehicle_model'] = vehicleModel;
+            }
+            if (vehicleYear != null) {
+              motoboyUpdate['vehicle_year'] = vehicleYear;
+            }
+            if (motoboyUpdate.isNotEmpty) {
+              await _db
+                  .from('motoboys')
+                  .update(motoboyUpdate)
+                  .eq('id', userId);
+            }
           }
 
           user = await _fetchUser(userId);
@@ -78,6 +95,11 @@ class AuthRepository {
             'is_online': false,
             if (vehiclePlate != null && vehiclePlate.isNotEmpty)
               'vehicle_plate': vehiclePlate,
+            if (vehicleCategory != null && vehicleCategory.isNotEmpty)
+              'vehicle_category': vehicleCategory,
+            if (vehicleModel != null && vehicleModel.isNotEmpty)
+              'vehicle_model': vehicleModel,
+            if (vehicleYear != null) 'vehicle_year': vehicleYear,
           });
         }
 

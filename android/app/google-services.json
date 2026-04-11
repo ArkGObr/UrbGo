@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "406648449557",
+    "project_id": "urbgo-delivery",
+    "storage_bucket": "urbgo-delivery.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:406648449557:android:4b3415d2b15cab5691bc1c",
+        "android_client_info": {
+          "package_name": "com.urbgo.urbgo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAH16tPLgNwN8-qd22bf9kmK0tZsg2ynNI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

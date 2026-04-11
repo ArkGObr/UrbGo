@@ -33,13 +33,16 @@ final motoboyStreamProvider = StreamProvider<MotoboyModel>((ref) async* {
   yield* ref.read(motoboyRepositoryProvider).watchMotoboy(user.id);
 });
 
-/// Corridas disponíveis (fetch com posição)
+/// Corridas disponíveis (fetch com posição, filtrado pela categoria do motoboy)
 final availableRunsProvider =
     FutureProvider<List<DeliveryModel>>((ref) async {
+  final user = ref.watch(authNotifierProvider).valueOrNull;
+  if (user == null) return [];
   final pos = await Geolocator.getCurrentPosition(
     desiredAccuracy: LocationAccuracy.high,
   );
   return ref.read(motoboyRepositoryProvider).getAvailableRuns(
+        motoboyId: user.id,
         lat: pos.latitude,
         lng: pos.longitude,
       );

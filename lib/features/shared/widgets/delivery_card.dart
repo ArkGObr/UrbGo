@@ -5,112 +5,121 @@ import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../client/domain/delivery_model.dart';
+import 'micro_interactions.dart';
+import 'vehicle_badge.dart';
 
 class DeliveryCard extends StatelessWidget {
   final DeliveryModel delivery;
   final VoidCallback? onTap;
+  final int index;
 
   const DeliveryCard({
     super.key,
     required this.delivery,
     this.onTap,
+    this.index = 0,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap ??
-          () => context.push('/client/tracking/${delivery.id}'),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: AppSpacing.md),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(AppRadius.md),
-          border: Border.all(color: AppColors.surfaceBorder, width: 0.5),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: IntrinsicHeight(
-          child: Row(
-            children: [
-              // Faixa lateral colorida por status
-              Container(
-                width: 4,
-                decoration: BoxDecoration(
-                  color: delivery.status.color,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(AppRadius.md),
-                    bottomLeft: Radius.circular(AppRadius.md),
+    return StaggeredListItem(
+      index: index,
+      child: TapScale(
+        onTap: onTap ??
+            () => context.push('/client/tracking/${delivery.id}'),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: AppSpacing.md),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border.all(color: AppColors.surfaceBorder, width: 0.5),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: IntrinsicHeight(
+            child: Row(
+              children: [
+                // Faixa lateral colorida por status
+                Container(
+                  width: 4,
+                  decoration: BoxDecoration(
+                    color: delivery.status.color,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(AppRadius.md),
+                      bottomLeft: Radius.circular(AppRadius.md),
+                    ),
                   ),
                 ),
-              ),
-              // Conteúdo
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSpacing.lg),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Status badge + valor
-                      Row(
-                        children: [
-                          _StatusBadge(status: delivery.status),
-                          const Spacer(),
-                          Text(
-                            CurrencyFormatter.format(delivery.value),
-                            style: AppTypography.numericMedium,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-
-                      // Endereço de coleta
-                      _AddressRow(
-                        icon: Icons.radio_button_on_rounded,
-                        iconColor: AppColors.primary,
-                        address: delivery.pickupAddress,
-                      ),
-                      // Linha pontilhada
-                      Padding(
-                        padding: const EdgeInsets.only(left: 9),
-                        child: Container(
-                          width: 1.5,
-                          height: 16,
-                          color: AppColors.surfaceBorder,
+                // Conteúdo
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Status badge + veículo + valor
+                        Row(
+                          children: [
+                            _StatusBadge(status: delivery.status),
+                            const SizedBox(width: AppSpacing.sm),
+                            VehicleBadge(category: delivery.vehicleCategory),
+                            const Spacer(),
+                            Text(
+                              CurrencyFormatter.format(delivery.value),
+                              style: AppTypography.numericMedium,
+                            ),
+                          ],
                         ),
-                      ),
-                      // Endereço de entrega
-                      _AddressRow(
-                        icon: Icons.location_on_rounded,
-                        iconColor: AppColors.error,
-                        address: delivery.deliveryAddress,
-                      ),
-                      const SizedBox(height: AppSpacing.md),
+                        const SizedBox(height: AppSpacing.md),
 
-                      // Rodapé: pagamento + data
-                      Row(
-                        children: [
-                          Icon(
-                            delivery.paymentMethodIcon,
-                            size: 14,
-                            color: AppColors.textTertiary,
+                        // Endereço de coleta
+                        _AddressRow(
+                          icon: Icons.radio_button_on_rounded,
+                          iconColor: AppColors.primary,
+                          address: delivery.pickupAddress,
+                        ),
+                        // Linha pontilhada
+                        Padding(
+                          padding: const EdgeInsets.only(left: 9),
+                          child: Container(
+                            width: 1.5,
+                            height: 16,
+                            color: AppColors.surfaceBorder,
                           ),
-                          const SizedBox(width: AppSpacing.xs),
-                          Text(
-                            delivery.paymentMethodLabel,
-                            style: AppTypography.bodySmall,
-                          ),
-                          const Spacer(),
-                          Text(
-                            _formatDate(delivery.createdAt),
-                            style: AppTypography.bodySmall,
-                          ),
-                        ],
-                      ),
-                    ],
+                        ),
+                        // Endereço de entrega
+                        _AddressRow(
+                          icon: Icons.location_on_rounded,
+                          iconColor: AppColors.error,
+                          address: delivery.deliveryAddress,
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+
+                        // Rodapé: pagamento + data
+                        Row(
+                          children: [
+                            Icon(
+                              delivery.paymentMethodIcon,
+                              size: 14,
+                              color: AppColors.textTertiary,
+                            ),
+                            const SizedBox(width: AppSpacing.xs),
+                            Text(
+                              delivery.paymentMethodLabel,
+                              style: AppTypography.bodySmall,
+                            ),
+                            const Spacer(),
+                            Text(
+                              _formatDate(delivery.createdAt),
+                              style: AppTypography.bodySmall,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
