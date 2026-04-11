@@ -662,14 +662,6 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
                 selected: _paymentMethod == 'pix',
                 onTap: () => setState(() => _paymentMethod = 'pix'),
               ),
-              const SizedBox(width: AppSpacing.sm),
-              _PaymentChip(
-                icon: Icons.credit_card_rounded,
-                label: 'Maquininha',
-                value: 'card',
-                selected: _paymentMethod == 'card',
-                onTap: () => setState(() => _paymentMethod = 'card'),
-              ),
             ],
           ),
           const SizedBox(height: AppSpacing.xl3),
@@ -727,7 +719,7 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
         children: [
           TileLayer(
             urlTemplate:
-                'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
             userAgentPackageName: 'com.urbgo.app',
           ),
           ColoredBox(

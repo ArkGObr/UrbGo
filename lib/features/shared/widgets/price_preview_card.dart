@@ -20,7 +20,7 @@ class PricePreviewCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final commission = PriceCalculator.commission(totalValue);
-    final distanceCost = distanceKm * category.perKmRate;
+    final netForDriver = PriceCalculator.netValue(totalValue);
 
     return Container(
       decoration: BoxDecoration(
@@ -48,14 +48,13 @@ class PricePreviewCard extends StatelessWidget {
             height: AppSpacing.xl.toDouble(),
           ),
           _PriceRow(
-            'Taxa base',
-            CurrencyFormatter.format(category.baseRate),
+            'Valor da entrega',
+            CurrencyFormatter.format(totalValue),
           ),
           const SizedBox(height: AppSpacing.xs),
           _PriceRow(
-            '${distanceKm.toStringAsFixed(1)} km × '
-            '${CurrencyFormatter.format(category.perKmRate)}',
-            CurrencyFormatter.format(distanceCost),
+            'Repasse ao entregador (75%)',
+            CurrencyFormatter.format(netForDriver),
           ),
           Divider(
             color: AppColors.surfaceBorder,

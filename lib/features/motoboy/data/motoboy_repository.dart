@@ -126,7 +126,22 @@ class MotoboyRepository {
       );
     }
 
-    // 2. Aceita a corrida (atualiza status e motoboy_id)
+    // 2. Verifica se a corrida ainda está pendente
+    final delivery = await _db
+        .from('deliveries')
+        .select('status, motoboy_id')
+        .eq('id', deliveryId)
+        .maybeSingle();
+
+    if (delivery == null) {
+      throw Exception('Corrida não encontrada.');
+    }
+
+    if (delivery['status'] != 'pending') {
+      throw Exception('Esta corrida já foi aceita por outro entregador.');
+    }
+
+    // 3. Aceita a corrida (atualiza status e motoboy_id)
     final updated = await _db
         .from('deliveries')
         .update({
@@ -135,11 +150,21 @@ class MotoboyRepository {
           'accepted_at': DateTime.now().toIso8601String(),
         })
         .eq('id', deliveryId)
-        .eq('status', 'pending') // garante que ninguém aceitou antes
-        .select();
+        .select('status, motoboy_id');
 
+    // 4. Verifica se o update realmente aconteceu
     if ((updated as List).isEmpty) {
-      throw Exception('Esta corrida já foi aceita por outro motoboy.');
+      throw Exception(
+        'Não foi possível aceitar a corrida. '
+        'Verifique suas permissões ou tente novamente.',
+      );
+    }
+
+    final afterStatus = updated.first['status'];
+    if (afterStatus != 'accepted') {
+      throw Exception(
+        'Falha ao aceitar corrida (status: $afterStatus). Tente novamente.',
+      );
     }
   }
 
@@ -148,8 +173,7 @@ class MotoboyRepository {
     await _db
         .from('deliveries')
         .update({'status': 'in_progress'})
-        .eq('id', deliveryId)
-        .eq('status', 'accepted');
+        .eq('id', deliveryId);
   }
 
   /// Finalizar entrega → trigger SQL desconta 25%
@@ -160,8 +184,7 @@ class MotoboyRepository {
           'status': 'completed',
           'completed_at': DateTime.now().toIso8601String(),
         })
-        .eq('id', deliveryId)
-        .eq('status', 'in_progress');
+        .eq('id', deliveryId);
   }
 
   // ── GPS ──────────────────────────────────────────────────

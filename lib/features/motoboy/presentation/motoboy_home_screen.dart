@@ -250,7 +250,7 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
                   children: [
                     TileLayer(
                       urlTemplate:
-                          'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                       userAgentPackageName: 'com.urbgo.app',
                       maxZoom: 19,
                     ),
@@ -1196,92 +1196,69 @@ class _MotoboyDrawer extends StatelessWidget {
                 child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Avatar com inicial
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryDeep,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: AppColors.primary.withValues(alpha: 0.5),
-                      width: 2,
-                    ),
-                  ),
-                  child: Center(
-                    child: Text(
-                      initial,
-                      style:
-                          AppTypography.h2.copyWith(color: AppColors.primary),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.md),
-
-                Text(
-                  motoboy.name.isNotEmpty ? motoboy.name : 'Entregador',
-                  style: AppTypography.h3,
-                ),
-                if (motoboy.phone.isNotEmpty) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    motoboy.phone,
-                    style: AppTypography.bodySmall
-                        .copyWith(color: AppColors.textSecondary),
-                  ),
-                ],
-                if (motoboy.vehiclePlate != null) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    motoboy.vehiclePlate!,
-                    style: AppTypography.labelSmall.copyWith(
-                      color: AppColors.textTertiary,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: AppSpacing.md),
-
-                // Badge online/offline
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.sm, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: motoboy.isOnline
-                        ? AppColors.primary.withValues(alpha: 0.12)
-                        : AppColors.surfaceBorder.withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(AppRadius.full),
-                    border: Border.all(
-                      color: motoboy.isOnline
-                          ? AppColors.primary.withValues(alpha: 0.4)
-                          : Colors.transparent,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: motoboy.isOnline
-                              ? AppColors.primary
-                              : AppColors.textTertiary,
-                          shape: BoxShape.circle,
+                // Avatar + Nome + Categoria
+                Row(
+                  children: [
+                    Container(
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryDeep,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: AppColors.primary.withValues(alpha: 0.5),
+                          width: 2,
                         ),
                       ),
-                      const SizedBox(width: 6),
-                      Text(
-                        motoboy.isOnline ? 'Online' : 'Offline',
-                        style: AppTypography.labelSmall.copyWith(
-                          color: motoboy.isOnline
-                              ? AppColors.primary
-                              : AppColors.textTertiary,
+                      child: Center(
+                        child: Text(
+                          initial,
+                          style: AppTypography.h3.copyWith(color: AppColors.primary),
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            motoboy.name.isNotEmpty ? motoboy.name : 'Entregador',
+                            style: AppTypography.h4,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Icon(
+                                motoboy.vehicleCategory.info.icon,
+                                size: 14,
+                                color: AppColors.primary,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                motoboy.vehicleCategory.info.name,
+                                style: AppTypography.bodySmall.copyWith(
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                              if (motoboy.vehiclePlate != null) ...[
+                                const SizedBox(width: 8),
+                                Text(
+                                  '·  ${motoboy.vehiclePlate!}',
+                                  style: AppTypography.bodySmall.copyWith(
+                                    color: AppColors.textTertiary,
+                                    letterSpacing: 0.8,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),   // Column

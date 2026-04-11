@@ -221,6 +221,8 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
     setState(() => _isProcessing = true);
     try {
       await ref.read(motoboyRepositoryProvider).completeDelivery(delivery.id);
+      ref.invalidate(availableRunsProvider);
+      ref.invalidate(motoboyStreamProvider);
       if (mounted) {
         final earnings = delivery.value - delivery.commission;
         await _showSuccessDialog(earnings, delivery.commission);
@@ -363,7 +365,7 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                   children: [
                     TileLayer(
                       urlTemplate:
-                          'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                       userAgentPackageName: 'com.urbgo.app',
                     ),
                     if (_routePoints.isNotEmpty)

@@ -260,7 +260,7 @@ class _CategoryOption extends StatelessWidget {
               children: [
                 if (!isForDriver)
                   Text(
-                    CurrencyFormatter.format(category.minFare),
+                    CurrencyFormatter.format(PriceCalculator.minFare(category)),
                     style: AppTypography.numericMedium.copyWith(
                       color: isSelected
                           ? AppColors.primary

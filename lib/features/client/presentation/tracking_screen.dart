@@ -248,7 +248,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                           children: [
                             TileLayer(
                               urlTemplate:
-                                  'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+                                  'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                               userAgentPackageName: 'com.urbgo.app',
                             ),
                             // Rota

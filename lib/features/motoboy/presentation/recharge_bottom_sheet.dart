@@ -196,12 +196,16 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      initialChildSize: 0.75,
-      maxChildSize: 0.9,
-      minChildSize: 0.5,
-      expand: false,
-      builder: (_, scrollController) => Container(
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final safeBottom = MediaQuery.of(context).padding.bottom;
+    final bottomPad = bottomInset > 0 ? bottomInset : safeBottom;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomPad),
+      child: Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
         decoration: const BoxDecoration(
           color: AppColors.surface,
           borderRadius: BorderRadius.vertical(
@@ -209,7 +213,6 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
           ),
         ),
         child: SingleChildScrollView(
-          controller: scrollController,
           padding: const EdgeInsets.all(AppSpacing.xl2),
           child: Column(
             mainAxisSize: MainAxisSize.min,

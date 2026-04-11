@@ -197,14 +197,12 @@ class DeliveryModel {
   String get paymentMethodLabel => switch (paymentMethod) {
         'cash' => 'Dinheiro',
         'pix' => 'PIX',
-        'card' => 'Maquininha',
         _ => paymentMethod,
       };
 
   IconData get paymentMethodIcon => switch (paymentMethod) {
         'cash' => Icons.money_rounded,
         'pix' => Icons.pix_rounded,
-        'card' => Icons.credit_card_rounded,
         _ => Icons.payment_rounded,
       };
 
