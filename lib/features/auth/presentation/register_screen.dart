@@ -28,8 +28,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _plateCtrl = TextEditingController();
   final _modelCtrl = TextEditingController();
   final _yearCtrl = TextEditingController();
+  final _documentCtrl = TextEditingController();
 
   String _selectedRole = 'client';
+  String _clientType = 'cpf'; // 'cpf' ou 'cnpj'
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
   VehicleCategoryInfo? _selectedCategory;
@@ -43,6 +45,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _confirmPasswordCtrl.dispose();
     _plateCtrl.dispose();
     _modelCtrl.dispose();
+    _documentCtrl.dispose();
     _yearCtrl.dispose();
     super.dispose();
   }
@@ -55,12 +58,21 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       return;
     }
 
+    if (_selectedRole == 'client' && _documentCtrl.text.replaceAll(RegExp(r'\D'), '').isEmpty) {
+      _showError('Informe o CPF ou CNPJ para continuar.');
+      return;
+    }
+
     await ref.read(authNotifierProvider.notifier).signUp(
           email: _emailCtrl.text.trim(),
           password: _passwordCtrl.text,
           name: _nameCtrl.text.trim(),
           phone: _phoneCtrl.text.trim(),
           role: _selectedRole,
+          clientType: _selectedRole == 'client' ? _clientType : null,
+          document: _selectedRole == 'client'
+              ? _documentCtrl.text.replaceAll(RegExp(r'\D'), '')
+              : null,
           vehiclePlate:
               _selectedRole == 'motoboy' ? _plateCtrl.text.trim() : null,
           vehicleCategory: _selectedRole == 'motoboy'
@@ -188,6 +200,84 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ],
                 ),
                 const SizedBox(height: AppSpacing.xl2),
+
+                // ── Campos exclusivos para cliente ─────────────
+                if (_selectedRole == 'client') ...[
+                  Text('Tipo de cadastro', style: AppTypography.labelLarge),
+                  const SizedBox(height: AppSpacing.md),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _RoleCard(
+                          icon: Icons.person_outlined,
+                          label: 'Pessoa Física',
+                          subtitle: 'CPF',
+                          value: 'cpf',
+                          selected: _clientType == 'cpf',
+                          onTap: () => setState(() {
+                            _clientType = 'cpf';
+                            _documentCtrl.clear();
+                          }),
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.md),
+                      Expanded(
+                        child: _RoleCard(
+                          icon: Icons.business_rounded,
+                          label: 'Empresa',
+                          subtitle: 'CNPJ',
+                          value: 'cnpj',
+                          selected: _clientType == 'cnpj',
+                          onTap: () => setState(() {
+                            _clientType = 'cnpj';
+                            _documentCtrl.clear();
+                          }),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  TextFormField(
+                    controller: _documentCtrl,
+                    keyboardType: TextInputType.number,
+                    textInputAction: TextInputAction.next,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(
+                        _clientType == 'cpf' ? 11 : 14,
+                      ),
+                      _clientType == 'cpf'
+                          ? _CpfMaskFormatter()
+                          : _CnpjMaskFormatter(),
+                    ],
+                    style: AppTypography.bodyLarge
+                        .copyWith(color: AppColors.textPrimary),
+                    decoration: InputDecoration(
+                      labelText: _clientType == 'cpf' ? 'CPF' : 'CNPJ',
+                      hintText: _clientType == 'cpf'
+                          ? '000.000.000-00'
+                          : '00.000.000/0000-00',
+                      prefixIcon: Icon(
+                        _clientType == 'cpf'
+                            ? Icons.badge_outlined
+                            : Icons.business_center_outlined,
+                        color: AppColors.textTertiary,
+                        size: 20,
+                      ),
+                    ),
+                    validator: (v) {
+                      final digits = v?.replaceAll(RegExp(r'\D'), '') ?? '';
+                      if (_clientType == 'cpf' && digits.length != 11) {
+                        return 'CPF deve ter 11 dígitos';
+                      }
+                      if (_clientType == 'cnpj' && digits.length != 14) {
+                        return 'CNPJ deve ter 14 dígitos';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                ],
 
                 // Nome
                 TextFormField(
@@ -492,6 +582,55 @@ class _PhoneMaskFormatter extends TextInputFormatter {
       if (i == 0) buffer.write('(');
       if (i == 2) buffer.write(') ');
       if (i == 7) buffer.write('-');
+      buffer.write(digits[i]);
+    }
+
+    final text = buffer.toString();
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
+}
+
+// ── Formatador de CPF: 000.000.000-00 ─────────────────────────
+class _CpfMaskFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final digits = newValue.text.replaceAll(RegExp(r'\D'), '');
+    final buffer = StringBuffer();
+
+    for (int i = 0; i < digits.length && i < 11; i++) {
+      if (i == 3 || i == 6) buffer.write('.');
+      if (i == 9) buffer.write('-');
+      buffer.write(digits[i]);
+    }
+
+    final text = buffer.toString();
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
+}
+
+// ── Formatador de CNPJ: 00.000.000/0000-00 ────────────────────
+class _CnpjMaskFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final digits = newValue.text.replaceAll(RegExp(r'\D'), '');
+    final buffer = StringBuffer();
+
+    for (int i = 0; i < digits.length && i < 14; i++) {
+      if (i == 2 || i == 5) buffer.write('.');
+      if (i == 8) buffer.write('/');
+      if (i == 12) buffer.write('-');
       buffer.write(digits[i]);
     }
 

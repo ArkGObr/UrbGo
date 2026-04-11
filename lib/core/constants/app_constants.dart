@@ -7,4 +7,8 @@ class AppConstants {
   static const double minimumRechargeAmount = 10.0;
   static const String orsBaseUrl = 'https://api.openrouteservice.org';
   static String get orsApiKey => dotenv.env['ORS_API_KEY'] ?? '';
+
+  /// Google Maps tile URL (sem API key)
+  static const String mapTileUrl =
+      'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
 }

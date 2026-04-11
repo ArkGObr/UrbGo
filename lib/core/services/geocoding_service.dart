@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../constants/app_constants.dart';
@@ -25,6 +26,7 @@ class AddressSuggestion {
 
 class GeocodingService {
   static const _timeout = Duration(seconds: 8);
+  static const MethodChannel _channel = MethodChannel('com.urbgo.app/geocoder');
 
   late final Dio _ors;
   late final Dio _nominatim;
@@ -57,11 +59,33 @@ class GeocodingService {
     final q = query.trim();
     if (q.length < 3) return [];
 
-    // 1. ORS Pelias autocomplete (com bias de localização)
+    // 1. Nativo (Google Maps via Android Geocoder sem API key)
+    try {
+      final results = await _channel.invokeListMethod<Map<dynamic, dynamic>>(
+        'geocode',
+        {
+          'query': q,
+          'focusLat': focusPoint?.latitude,
+          'focusLng': focusPoint?.longitude,
+        },
+      );
+      if (results != null && results.isNotEmpty) {
+        return results.map((m) {
+          return AddressSuggestion(
+            label: m['label'] as String,
+            coordinates: LatLng(m['lat'] as double, m['lng'] as double),
+          );
+        }).toList();
+      }
+    } catch (e) {
+      debugPrint('[GeocodingService] Native geocoder fallback (autocomplete): $e');
+    }
+
+    // 2. ORS Pelias autocomplete (com bias de localização)
     final ors = await _orsAutocomplete(q, focusPoint: focusPoint);
     if (ors.isNotEmpty) return ors;
 
-    // 2. Fallback: Nominatim search
+    // 3. Fallback: Nominatim search
     return _nominatimSearch(q, limit: 5, focusPoint: focusPoint);
   }
 
@@ -165,11 +189,27 @@ class GeocodingService {
     final q = address.trim();
     if (q.isEmpty) return null;
 
-    // 1. ORS Pelias search
+    // 1. Nativo (Google Maps)
+    try {
+      final results = await _channel.invokeListMethod<Map<dynamic, dynamic>>(
+        'geocode',
+        {'query': q},
+      );
+      if (results != null && results.isNotEmpty) {
+        return LatLng(
+          results[0]['lat'] as double,
+          results[0]['lng'] as double,
+        );
+      }
+    } catch (e) {
+      debugPrint('[GeocodingService] Native geocoder fallback (geocode): $e');
+    }
+
+    // 2. ORS Pelias search
     final orsResult = await _orsGeocode(q);
     if (orsResult != null) return orsResult;
 
-    // 2. Fallback Nominatim
+    // 3. Fallback Nominatim
     return _nominatimGeocode(q);
   }
 
@@ -229,11 +269,22 @@ class GeocodingService {
   // ──────────────────────────────────────────────────────────
 
   Future<String?> reverseGeocode(double lat, double lng) async {
-    // 1. ORS reverse
+    // 1. Nativo (Google Maps)
+    try {
+      final result = await _channel.invokeMethod<String>(
+        'reverseGeocode',
+        {'lat': lat, 'lng': lng},
+      );
+      if (result != null && result.isNotEmpty) return result;
+    } catch (e) {
+      debugPrint('[GeocodingService] Native geocoder fallback (reverse): $e');
+    }
+
+    // 2. ORS reverse
     final orsResult = await _orsReverse(lat, lng);
     if (orsResult != null) return orsResult;
 
-    // 2. Fallback Nominatim
+    // 3. Fallback Nominatim
     return _nominatimReverse(lat, lng);
   }
 

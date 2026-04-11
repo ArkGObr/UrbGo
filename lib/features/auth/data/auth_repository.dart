@@ -10,6 +10,8 @@ class AuthRepository {
     required String name,
     required String phone,
     required String role,
+    String? clientType,
+    String? document,
     String? vehiclePlate,
     String? vehicleCategory,
     String? vehicleModel,
@@ -18,7 +20,13 @@ class AuthRepository {
     final response = await _db.auth.signUp(
       email: email,
       password: password,
-      data: {'name': name, 'phone': phone, 'role': role},
+      data: {
+        'name': name,
+        'phone': phone,
+        'role': role,
+        if (clientType != null) 'client_type': clientType,
+        if (document != null) 'document': document,
+      },
     );
 
     if (response.user == null) {
@@ -40,10 +48,13 @@ class AuthRepository {
 
         if (data != null) {
           // Atualiza phone e name caso o trigger não tenha pego dos metadados
-          await _db.from('users').update({
+          final updateData = <String, dynamic>{
             'phone': phone,
             'name': name,
-          }).eq('id', userId);
+          };
+          if (clientType != null) updateData['client_type'] = clientType;
+          if (document != null) updateData['document'] = document;
+          await _db.from('users').update(updateData).eq('id', userId);
 
           // Atualiza placa do motoboy se aplicável
           if (role == 'motoboy') {
@@ -86,6 +97,8 @@ class AuthRepository {
           'phone': phone,
           'role': role,
           'status': 'active',
+          if (clientType != null) 'client_type': clientType,
+          if (document != null) 'document': document,
         });
 
         if (role == 'motoboy') {

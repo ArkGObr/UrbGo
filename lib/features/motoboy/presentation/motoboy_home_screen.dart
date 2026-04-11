@@ -11,6 +11,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/constants/vehicle_categories.dart';
@@ -249,8 +250,7 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
                   ),
                   children: [
                     TileLayer(
-                      urlTemplate:
-                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      urlTemplate: AppConstants.mapTileUrl,
                       userAgentPackageName: 'com.urbgo.app',
                       maxZoom: 19,
                     ),

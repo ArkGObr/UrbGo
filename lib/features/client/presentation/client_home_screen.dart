@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/services/connectivity_service.dart';
@@ -386,8 +387,7 @@ class _ActiveDeliveryMapState extends State<_ActiveDeliveryMap> {
                 ),
                 children: [
                   TileLayer(
-                    urlTemplate:
-                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    urlTemplate: AppConstants.mapTileUrl,
                     userAgentPackageName: 'com.urbgo.app',
                   ),
                   MarkerLayer(

@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/services/logger_service.dart';
@@ -16,6 +17,7 @@ import '../../client/domain/delivery_model.dart';
 import '../../shared/widgets/primary_button.dart';
 import '../../shared/widgets/vehicle_badge.dart';
 import '../domain/motoboy_providers.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Provider local para a posição do motoboy em tempo real
 final _myPositionProvider = StateProvider<LatLng?>((ref) => null);
@@ -38,6 +40,7 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
   DeliveryModel? _delivery;
   bool _isLoading = true;
   List<LatLng> _routePoints = [];
+  bool _isNavigating = false;
 
   @override
   void initState() {
@@ -111,26 +114,70 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
   }
 
   Future<void> _loadRoute(LatLng from, LatLng to) async {
-    // Enquanto carrega, mostra linha reta
     if (mounted) setState(() => _routePoints = [from, to]);
     try {
       final points = await _routeService.getRoute(from, to);
-      if (mounted) setState(() => _routePoints = points);
-    } catch (_) {
-      // Mantém linha reta como fallback
-    }
+      if (mounted) {
+        setState(() => _routePoints = points);
+        _fitBounds();
+      }
+    } catch (_) {}
+  }
+
+  void _fitBounds() {
+    if (_delivery == null) return;
+    final bool goingToPickup = _delivery!.status == DeliveryStatus.accepted;
+    final dest = goingToPickup
+        ? LatLng(_delivery!.pickupLat, _delivery!.pickupLng)
+        : LatLng(_delivery!.deliveryLat, _delivery!.deliveryLng);
+    final start = ref.read(_myPositionProvider) ??
+        LatLng(_delivery!.pickupLat, _delivery!.pickupLng);
+    
+    try {
+      _mapController.fitCamera(
+        CameraFit.bounds(
+          bounds: LatLngBounds(start, dest),
+          padding: const EdgeInsets.all(50),
+        ),
+      );
+    } catch (_) {}
   }
 
   void _startPositionStream() {
     _positionStream = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 10,
+        distanceFilter: 2, // Frequência maior para navegação fluida
       ),
     ).listen((pos) {
-      ref.read(_myPositionProvider.notifier).state =
-          LatLng(pos.latitude, pos.longitude);
+      if (!mounted) return;
+      final latLng = LatLng(pos.latitude, pos.longitude);
+      ref.read(_myPositionProvider.notifier).state = latLng;
+      
+      // Auto-centraliza se estiver no modo navegação
+      if (_isNavigating) {
+        _mapController.move(latLng, 18.0);
+      }
     });
+  }
+
+  void _toggleNavigation() {
+    setState(() => _isNavigating = !_isNavigating);
+    if (_isNavigating) {
+      final myPos = ref.read(_myPositionProvider);
+      if (myPos != null) {
+        _mapController.move(myPos, 18.0);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Aguardando sinal de GPS...'), 
+            backgroundColor: AppColors.surface,
+          ),
+        );
+      }
+    } else {
+      _fitBounds();
+    }
   }
 
   @override
@@ -364,8 +411,7 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                   ),
                   children: [
                     TileLayer(
-                      urlTemplate:
-                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      urlTemplate: AppConstants.mapTileUrl,
                       userAgentPackageName: 'com.urbgo.app',
                     ),
                     if (_routePoints.isNotEmpty)
@@ -476,6 +522,85 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                     ),
                   ),
                 ),
+
+                // Botão navegar (estilo Uber)
+                Positioned(
+                  bottom: AppSpacing.lg,
+                  right: AppSpacing.lg,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Re-center
+                      if (myPos != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                          child: GestureDetector(
+                            onTap: () {
+                              _mapController.move(myPos, 16);
+                            },
+                            child: Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: AppColors.background,
+                                borderRadius: BorderRadius.circular(AppRadius.full),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.2),
+                                    blurRadius: 8,
+                                  ),
+                                ],
+                              ),
+                              child: const Icon(
+                                Icons.my_location_rounded,
+                                color: AppColors.info,
+                                size: 22,
+                              ),
+                            ),
+                          ),
+                        ),
+                      // Navegar GPS
+                      GestureDetector(
+                        onTap: _toggleNavigation,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _isNavigating ? AppColors.error : AppColors.primary,
+                            borderRadius: BorderRadius.circular(AppRadius.full),
+                            boxShadow: [
+                              BoxShadow(
+                                color: (_isNavigating ? AppColors.error : AppColors.primary).withValues(alpha: 0.4),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _isNavigating ? Icons.close_rounded : Icons.navigation_rounded,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                _isNavigating ? 'Sair da Navegação' : 'Navegar',
+                                style: AppTypography.labelLarge.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -512,73 +637,75 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                     ),
                     const SizedBox(height: AppSpacing.lg),
 
-                    // Categoria + status
-                    Row(
-                      children: [
-                        VehicleBadge(category: delivery.vehicleCategory),
-                        const Spacer(),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: AppSpacing.md,
-                            vertical: AppSpacing.xs,
-                          ),
-                          decoration: BoxDecoration(
-                            color: delivery.status.color.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(AppRadius.full),
-                            border: Border.all(
-                              color: delivery.status.color.withValues(alpha: 0.3),
+                    if (!_isNavigating) ...[
+                      // Categoria + status
+                      Row(
+                        children: [
+                          VehicleBadge(category: delivery.vehicleCategory),
+                          const Spacer(),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.md,
+                              vertical: AppSpacing.xs,
+                            ),
+                            decoration: BoxDecoration(
+                              color: delivery.status.color.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(AppRadius.full),
+                              border: Border.all(
+                                color: delivery.status.color.withValues(alpha: 0.3),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(delivery.status.icon,
+                                    color: delivery.status.color, size: 14),
+                                const SizedBox(width: AppSpacing.xs),
+                                Text(
+                                  delivery.status.label,
+                                  style: AppTypography.labelSmall.copyWith(
+                                    color: delivery.status.color,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(delivery.status.icon,
-                                  color: delivery.status.color, size: 14),
-                              const SizedBox(width: AppSpacing.xs),
-                              Text(
-                                delivery.status.label,
-                                style: AppTypography.labelSmall.copyWith(
-                                  color: delivery.status.color,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
+                        ],
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
+
+                      // Valor
+                      Row(
+                        children: [
+                          Text('Valor', style: AppTypography.bodyMedium),
+                          const Spacer(),
+                          Text(
+                            CurrencyFormatter.format(delivery.value),
+                            style: AppTypography.numericLarge,
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: AppSpacing.lg),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpacing.md),
 
-                    // Valor
-                    Row(
-                      children: [
-                        Text('Valor', style: AppTypography.bodyMedium),
-                        const Spacer(),
-                        Text(
-                          CurrencyFormatter.format(delivery.value),
-                          style: AppTypography.numericLarge,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: AppSpacing.md),
+                      // Endereços
+                      _AddressRow(
+                        icon: Icons.store_rounded,
+                        iconColor: AppColors.error,
+                        label: 'Coleta',
+                        address: delivery.pickupAddress,
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      _AddressRow(
+                        icon: Icons.flag_rounded,
+                        iconColor: AppColors.primary,
+                        label: 'Entrega',
+                        address: delivery.deliveryAddress,
+                      ),
+                      const SizedBox(height: AppSpacing.xl2),
+                    ],
 
-                    // Endereços
-                    _AddressRow(
-                      icon: Icons.store_rounded,
-                      iconColor: AppColors.error,
-                      label: 'Coleta',
-                      address: delivery.pickupAddress,
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-                    _AddressRow(
-                      icon: Icons.flag_rounded,
-                      iconColor: AppColors.primary,
-                      label: 'Entrega',
-                      address: delivery.deliveryAddress,
-                    ),
-                    const SizedBox(height: AppSpacing.xl2),
-
-                    // Botões de ação
+                    // Botões de ação SEMPRE VISÍVEIS no modo direção
                     if (delivery.status == DeliveryStatus.accepted)
                       PrimaryButton(
                         label: '✓ Confirmar Coleta',

@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/constants/vehicle_categories.dart';
@@ -59,6 +60,7 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
 
   final RouteService _routeService = RouteService();
   List<LatLng> _routePoints = [];
+  RouteResult? _routeResult;
 
   bool _settingPickup = false;
   bool _settingDelivery = false;
@@ -294,7 +296,7 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
   // Price calculation
   // ─────────────────────────────────────────────────────────
 
-  void _recalculate() {
+  Future<void> _recalculate() async {
     if (_pickupLatLng == null ||
         _deliveryLatLng == null ||
         _selectedCategory == null) {
@@ -302,43 +304,35 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
         _distanceKm = null;
         _deliveryValue = null;
         _routePoints = [];
+        _routeResult = null;
       });
       return;
     }
-    final dist = _haversineDistanceKm(_pickupLatLng!, _deliveryLatLng!);
-    final val = PriceCalculator.calculate(_selectedCategory!, dist);
-    setState(() {
-      _distanceKm = dist;
-      _deliveryValue = val;
-      _routePoints = [_pickupLatLng!, _deliveryLatLng!];
-    });
-    _fitMapBounds();
-    _loadRealRoute();
-  }
 
-  Future<void> _loadRealRoute() async {
-    if (_pickupLatLng == null || _deliveryLatLng == null) return;
+    _fitMapBounds();
+
     final from = _pickupLatLng!;
     final to = _deliveryLatLng!;
-    try {
-      final points = await _routeService.getRoute(from, to);
-      if (!mounted) return;
-      if (_pickupLatLng == from && _deliveryLatLng == to) {
-        setState(() => _routePoints = points);
-      }
-    } catch (_) {}
-  }
 
-  double _haversineDistanceKm(LatLng a, LatLng b) {
-    const r = 6371.0;
-    final dLat = _toRad(b.latitude - a.latitude);
-    final dLon = _toRad(b.longitude - a.longitude);
-    final h = sin(dLat / 2) * sin(dLat / 2) +
-        cos(_toRad(a.latitude)) *
-            cos(_toRad(b.latitude)) *
-            sin(dLon / 2) *
-            sin(dLon / 2);
-    return r * 2 * asin(sqrt(h));
+    try {
+      // Usa a Rota Inteligente que resolve o valor minimo para não dar preju e os pontos da rua
+      final result = await _routeService.getRouteWithInfo(from, to);
+      
+      if (!mounted) return;
+      
+      // Se os pontos não mudaram enquanto a requisição rodava:
+      if (_pickupLatLng == from && _deliveryLatLng == to) {
+        final realVal = PriceCalculator.calculate(_selectedCategory!, result.distanceKm);
+        setState(() {
+          _routePoints = result.points;
+          _routeResult = result;
+          _distanceKm = result.distanceKm;
+          _deliveryValue = realVal;
+        });
+      }
+    } catch (e) {
+      debugPrint('Erro ao recalcular rota: $e');
+    }
   }
 
   double _toRad(double deg) => deg * pi / 180;
@@ -393,7 +387,6 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
       final ok = await _ensureGeocoded();
       if (!ok || !mounted) return;
 
-      _recalculate();
       if (_deliveryValue == null) return;
 
       final user = ref.read(authNotifierProvider).valueOrNull;
@@ -709,61 +702,121 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
 
   Widget _buildMapPreview() {
     final center = _pickupLatLng ?? _deliveryLatLng!;
-    return ClipRRect(
-      child: FlutterMap(
-        mapController: _mapController,
-        options: MapOptions(
-          initialCenter: center,
-          initialZoom: 13,
-        ),
-        children: [
-          TileLayer(
-            urlTemplate:
-                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            userAgentPackageName: 'com.urbgo.app',
-          ),
-          ColoredBox(
-            color: Colors.black.withValues(alpha: 0.15),
-            child: const SizedBox.expand(),
-          ),
-          MarkerLayer(
-            markers: [
-              if (_pickupLatLng != null)
-                Marker(
-                  point: _pickupLatLng!,
-                  width: 36,
-                  height: 36,
-                  child: const Icon(
-                    Icons.radio_button_on_rounded,
-                    color: AppColors.primary,
-                    size: 28,
-                  ),
-                ),
-              if (_deliveryLatLng != null)
-                Marker(
-                  point: _deliveryLatLng!,
-                  width: 36,
-                  height: 36,
-                  child: const Icon(
-                    Icons.location_on_rounded,
-                    color: AppColors.error,
-                    size: 32,
-                  ),
+    return Stack(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          child: FlutterMap(
+            mapController: _mapController,
+            options: MapOptions(
+              initialCenter: center,
+              initialZoom: 13,
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: AppConstants.mapTileUrl,
+                userAgentPackageName: 'com.urbgo.app',
+              ),
+              MarkerLayer(
+                markers: [
+                  if (_pickupLatLng != null)
+                    Marker(
+                      point: _pickupLatLng!,
+                      width: 40,
+                      height: 40,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 3),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.primary.withValues(alpha: 0.4),
+                              blurRadius: 8,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.store_rounded,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                  if (_deliveryLatLng != null)
+                    Marker(
+                      point: _deliveryLatLng!,
+                      width: 40,
+                      height: 40,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.error,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 3),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.error.withValues(alpha: 0.4),
+                              blurRadius: 8,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.flag_rounded,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              if (_routePoints.isNotEmpty)
+                PolylineLayer(
+                  polylines: [
+                    // Sombra da rota
+                    Polyline(
+                      points: _routePoints,
+                      color: AppColors.primary.withValues(alpha: 0.15),
+                      strokeWidth: 10,
+                    ),
+                    // Rota principal
+                    Polyline(
+                      points: _routePoints,
+                      color: AppColors.primary,
+                      strokeWidth: 4,
+                    ),
+                  ],
                 ),
             ],
           ),
-          if (_routePoints.isNotEmpty)
-            PolylineLayer(
-              polylines: [
-                Polyline(
-                  points: _routePoints,
-                  color: AppColors.primary.withValues(alpha: 0.7),
-                  strokeWidth: 4,
+        ),
+
+        // Route info badges (top right)
+        if (_routeResult != null)
+          Positioned(
+            top: 12,
+            right: 12,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // Distância
+                _RouteInfoBadge(
+                  icon: Icons.route_rounded,
+                  label: _routeResult!.formattedDistance,
+                  color: AppColors.primary,
+                ),
+                const SizedBox(height: 6),
+                // Tempo estimado
+                _RouteInfoBadge(
+                  icon: Icons.schedule_rounded,
+                  label: _routeResult!.formattedDuration,
+                  color: const Color(0xFF2196F3),
                 ),
               ],
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 }
@@ -1136,6 +1189,58 @@ class _SummaryAddressRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Route Info Badge (distance / time on map)
+// ─────────────────────────────────────────────────────────────
+
+class _RouteInfoBadge extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const _RouteInfoBadge({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.xs + 2,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(AppRadius.full),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.15),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 14),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: AppTypography.labelSmall.copyWith(
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
