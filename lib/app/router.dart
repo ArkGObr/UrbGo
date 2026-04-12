@@ -10,10 +10,13 @@ import '../features/auth/presentation/check_email_screen.dart';
 import '../features/client/presentation/client_home_screen.dart';
 import '../features/client/presentation/create_delivery_screen.dart';
 import '../features/client/presentation/tracking_screen.dart';
+import '../features/client/presentation/client_profile_screen.dart';
 import '../features/motoboy/presentation/motoboy_home_screen.dart';
 import '../features/motoboy/presentation/available_runs_screen.dart';
 import '../features/motoboy/presentation/active_run_screen.dart';
 import '../features/motoboy/presentation/wallet_screen.dart';
+import '../features/motoboy/presentation/motoboy_profile_screen.dart';
+import '../core/constants/vehicle_categories.dart';
 import 'page_transitions.dart';
 
 class _RouterNotifier extends ChangeNotifier {
@@ -115,7 +118,9 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/client/create',
             pageBuilder: (_, state) => slideUpFadeTransition(
               key: state.pageKey,
-              child: const CreateDeliveryScreen(),
+              child: CreateDeliveryScreen(
+                initialCategory: state.extra as VehicleCategoryInfo?,
+              ),
             ),
           ),
           GoRoute(
@@ -125,6 +130,13 @@ final routerProvider = Provider<GoRouter>((ref) {
               child: TrackingScreen(
                 deliveryId: state.pathParameters['id']!,
               ),
+            ),
+          ),
+          GoRoute(
+            path: '/client/profile',
+            pageBuilder: (_, state) => slideUpFadeTransition(
+              key: state.pageKey,
+              child: const ClientProfileScreen(),
             ),
           ),
         ],
@@ -162,6 +174,13 @@ final routerProvider = Provider<GoRouter>((ref) {
             pageBuilder: (_, state) => slideUpFadeTransition(
               key: state.pageKey,
               child: const WalletScreen(),
+            ),
+          ),
+          GoRoute(
+            path: '/motoboy/profile',
+            pageBuilder: (_, state) => slideUpFadeTransition(
+              key: state.pageKey,
+              child: const MotoboyProfileScreen(),
             ),
           ),
         ],

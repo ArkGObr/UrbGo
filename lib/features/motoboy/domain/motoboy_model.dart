@@ -13,6 +13,8 @@ class MotoboyModel {
   final VehicleCategory vehicleCategory;
   final String? vehicleModel;
   final int? vehicleYear;
+  final String? avatarUrl;
+  final String? description;
 
   const MotoboyModel({
     required this.id,
@@ -27,6 +29,8 @@ class MotoboyModel {
     this.vehicleCategory = VehicleCategory.motoboy,
     this.vehicleModel,
     this.vehicleYear,
+    this.avatarUrl,
+    this.description,
   });
 
   /// Retorna true se tem saldo suficiente para aceitar a corrida
@@ -50,6 +54,8 @@ class MotoboyModel {
       ),
       vehicleModel: json['vehicle_model'] as String?,
       vehicleYear: json['vehicle_year'] as int?,
+      avatarUrl: json['avatar_url'] as String?,
+      description: json['description'] as String?,
     );
   }
 
@@ -66,6 +72,8 @@ class MotoboyModel {
     VehicleCategory? vehicleCategory,
     String? vehicleModel,
     int? vehicleYear,
+    String? avatarUrl,
+    String? description,
   }) {
     return MotoboyModel(
       id: id ?? this.id,
@@ -80,6 +88,8 @@ class MotoboyModel {
       vehicleCategory: vehicleCategory ?? this.vehicleCategory,
       vehicleModel: vehicleModel ?? this.vehicleModel,
       vehicleYear: vehicleYear ?? this.vehicleYear,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      description: description ?? this.description,
     );
   }
 }

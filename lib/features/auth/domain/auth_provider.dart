@@ -11,9 +11,13 @@ class AuthNotifier extends AsyncNotifier<UserModel?> {
   @override
   Future<UserModel?> build() async {
     // Escuta eventos de logout do Supabase Auth
-    Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+    Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
       if (data.event == AuthChangeEvent.signedOut) {
         state = const AsyncValue.data(null);
+      } else if (data.event == AuthChangeEvent.signedIn) {
+        final user = await ref.read(authRepositoryProvider).getSessionUser();
+        state = AsyncValue.data(user);
+        if (user != null) _initNotifications(user.id);
       }
     });
 

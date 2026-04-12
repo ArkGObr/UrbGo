@@ -50,13 +50,25 @@ class GeocodingService {
   // Autocomplete — retorna sugestões conforme o usuário digita
   // ──────────────────────────────────────────────────────────
 
+  String _expandAbbreviations(String q) {
+    if (q.isEmpty) return q;
+    var result = q;
+    result = result.replaceAll(RegExp(r'\b(Av|av)\b\.?'), 'Avenida');
+    result = result.replaceAll(RegExp(r'\b(R|r)\b\.?(?![\w])'), 'Rua');
+    result = result.replaceAll(RegExp(r'\b(Dr|dr)\b\.?'), 'Doutor');
+    result = result.replaceAll(RegExp(r'\b(Prof|prof)\b\.?'), 'Professor');
+    result = result.replaceAll(RegExp(r'\b(Pca|pca)\b\.?', caseSensitive: false), 'Praça');
+    result = result.replaceAll(RegExp(r'\b(Praca|praca)\b\.?', caseSensitive: false), 'Praça');
+    return result;
+  }
+
   /// [focusPoint] é a posição atual do usuário — quando fornecido,
   /// os resultados são ordenados por proximidade a esse ponto.
   Future<List<AddressSuggestion>> autocomplete(
     String query, {
     LatLng? focusPoint,
   }) async {
-    final q = query.trim();
+    final q = _expandAbbreviations(query.trim());
     if (q.length < 3) return [];
 
     // 1. Nativo (Google Maps via Android Geocoder sem API key)
@@ -110,6 +122,11 @@ class GeocodingService {
       if (focusPoint != null) {
         params['focus.point.lat'] = focusPoint.latitude;
         params['focus.point.lon'] = focusPoint.longitude;
+        // Restrito a um raio geográfico aproximado (~50km)
+        params['boundary.rect.min_lon'] = focusPoint.longitude - 0.5;
+        params['boundary.rect.min_lat'] = focusPoint.latitude - 0.5;
+        params['boundary.rect.max_lon'] = focusPoint.longitude + 0.5;
+        params['boundary.rect.max_lat'] = focusPoint.latitude + 0.5;
       }
 
       final response = await _ors.get(
@@ -161,6 +178,8 @@ class GeocodingService {
       if (focusPoint != null) {
         params['lat'] = focusPoint.latitude;
         params['lon'] = focusPoint.longitude;
+        params['viewbox'] = '${focusPoint.longitude - 0.5},${focusPoint.latitude + 0.5},${focusPoint.longitude + 0.5},${focusPoint.latitude - 0.5}';
+        params['bounded'] = 1;
       }
 
       final response = await _nominatim.get('/search', queryParameters: params);

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
@@ -76,6 +77,33 @@ class CheckEmailScreen extends StatelessWidget {
               
               const Spacer(),
               
+              // Botão de atalho para enviar a pessoa pro e-mail app nativo
+              ElevatedButton.icon(
+                icon: const Icon(Icons.mail_outline_rounded, color: Colors.black),
+                label: const Text(
+                  'Mudar para caixa de E-mail',
+                  style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                onPressed: () async {
+                  final Uri emailLaunchUri = Uri(
+                    scheme: 'mailto',
+                  );
+                  try {
+                    await launchUrl(emailLaunchUri);
+                  } catch (e) {
+                    // Ignora silenciosamente
+                  }
+                },
+              ),
+              const SizedBox(height: 12),
+
               // Botão para voltar pro login por segurança
               TextButton(
                 onPressed: () => context.go('/login'),

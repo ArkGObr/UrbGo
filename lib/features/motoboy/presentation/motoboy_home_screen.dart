@@ -209,6 +209,7 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
         drawer: motoboyAsync.valueOrNull != null
             ? _MotoboyDrawer(
                 motoboy: motoboyAsync.valueOrNull!,
+                userName: (user?.name.trim().isNotEmpty == true) ? user!.name : (motoboyAsync.valueOrNull!.name.isNotEmpty == true ? motoboyAsync.valueOrNull!.name : 'Entregador'),
                 onSignOut: () async {
                   ref.read(motoboyRepositoryProvider).stopLocationUpdates();
                   await ref.read(authNotifierProvider.notifier).signOut();
@@ -220,6 +221,10 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
                 onRuns: () {
                   Navigator.of(context).pop();
                   context.push('/motoboy/runs');
+                },
+                onProfile: () {
+                  Navigator.of(context).pop();
+                  context.push('/motoboy/profile');
                 },
               )
             : null,
@@ -1156,21 +1161,25 @@ class _AddressLine extends StatelessWidget {
 
 class _MotoboyDrawer extends StatelessWidget {
   final MotoboyModel motoboy;
+  final String userName;
   final VoidCallback onSignOut;
   final VoidCallback onWallet;
   final VoidCallback onRuns;
+  final VoidCallback onProfile;
 
   const _MotoboyDrawer({
     required this.motoboy,
+    required this.userName,
     required this.onSignOut,
     required this.onWallet,
     required this.onRuns,
+    required this.onProfile,
   });
 
   @override
   Widget build(BuildContext context) {
     final initial =
-        motoboy.name.isNotEmpty ? motoboy.name[0].toUpperCase() : 'M';
+        userName.isNotEmpty ? userName[0].toUpperCase() : 'M';
 
     return Drawer(
       width: MediaQuery.of(context).size.width * 0.78,
@@ -1209,13 +1218,21 @@ class _MotoboyDrawer extends StatelessWidget {
                           color: AppColors.primary.withValues(alpha: 0.5),
                           width: 2,
                         ),
+                        image: motoboy.avatarUrl != null && motoboy.avatarUrl!.isNotEmpty
+                            ? DecorationImage(
+                                image: NetworkImage(motoboy.avatarUrl!),
+                                fit: BoxFit.cover,
+                              )
+                            : null,
                       ),
-                      child: Center(
-                        child: Text(
-                          initial,
-                          style: AppTypography.h3.copyWith(color: AppColors.primary),
-                        ),
-                      ),
+                      child: motoboy.avatarUrl == null || motoboy.avatarUrl!.isEmpty
+                          ? Center(
+                              child: Text(
+                                initial,
+                                style: AppTypography.h3.copyWith(color: AppColors.primary),
+                              ),
+                            )
+                          : null,
                     ),
                     const SizedBox(width: AppSpacing.md),
                     Expanded(
@@ -1223,7 +1240,7 @@ class _MotoboyDrawer extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            motoboy.name.isNotEmpty ? motoboy.name : 'Entregador',
+                            userName,
                             style: AppTypography.h4,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -1341,6 +1358,11 @@ class _MotoboyDrawer extends StatelessWidget {
             icon: Icons.motorcycle_rounded,
             label: 'Corridas',
             onTap: onRuns,
+          ),
+          _DrawerNavItem(
+            icon: Icons.person_outline_rounded,
+            label: 'Perfil',
+            onTap: onProfile,
           ),
 
           const Spacer(),

@@ -22,7 +22,12 @@ import '../../shared/widgets/primary_button.dart';
 import '../domain/client_providers.dart';
 
 class CreateDeliveryScreen extends ConsumerStatefulWidget {
-  const CreateDeliveryScreen({super.key});
+  final VehicleCategoryInfo? initialCategory;
+
+  const CreateDeliveryScreen({
+    super.key,
+    this.initialCategory,
+  });
 
   @override
   ConsumerState<CreateDeliveryScreen> createState() =>
@@ -70,6 +75,10 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialCategory != null) {
+      _selectedCategory = widget.initialCategory;
+      _step = 1; // Skip the vehicle selection step!
+    }
     _fetchUserLocation();
     _pickupCtrl.addListener(_onPickupChanged);
     _deliveryCtrl.addListener(_onDeliveryChanged);

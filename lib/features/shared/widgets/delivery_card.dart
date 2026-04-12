@@ -56,13 +56,20 @@ class DeliveryCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Status badge + veículo + valor
                         Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _StatusBadge(status: delivery.status),
+                            Expanded(
+                              child: Wrap(
+                                spacing: AppSpacing.sm,
+                                runSpacing: AppSpacing.xs,
+                                children: [
+                                  _StatusBadge(status: delivery.status),
+                                  VehicleBadge(category: delivery.vehicleCategory),
+                                ],
+                              ),
+                            ),
                             const SizedBox(width: AppSpacing.sm),
-                            VehicleBadge(category: delivery.vehicleCategory),
-                            const Spacer(),
                             Text(
                               CurrencyFormatter.format(delivery.value),
                               style: AppTypography.numericMedium,

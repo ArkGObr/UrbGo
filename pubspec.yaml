@@ -33,6 +33,8 @@ dependencies:
   webview_flutter_android: ^3.16.0
   google_fonts: ^6.2.1
   cupertino_icons: ^1.0.8
+  image_picker: ^1.2.1
+  image_cropper: ^12.2.0
 
 dev_dependencies:
   flutter_test:
