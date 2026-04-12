@@ -3,11 +3,10 @@ import 'package:flutter/material.dart';
 enum VehicleCategory {
   motoboy,
   car,
-  // Desativadas por enquanto — serão habilitadas após validação
-  // bike,
-  // mototaxi,
-  // van,
-  // truck,
+  bike,
+  mototaxi,
+  van,
+  truck,
 }
 
 class VehicleCategoryInfo {
@@ -15,6 +14,7 @@ class VehicleCategoryInfo {
   final String id;
   final String name;
   final IconData icon;
+  final String? assetPath;
   final String description;
   final String capacity;
   final int etaMultiplier;
@@ -24,20 +24,21 @@ class VehicleCategoryInfo {
     required this.id,
     required this.name,
     required this.icon,
+    this.assetPath,
     required this.description,
     required this.capacity,
     required this.etaMultiplier,
   });
 }
 
-/// Todas as categorias disponíveis no app (apenas as ativas).
+/// Todas as categorias disponíveis no app
 const List<VehicleCategoryInfo> vehicleCategories = [
   VehicleCategoryInfo(
     category: VehicleCategory.motoboy,
     id: 'motoboy',
-    name: 'Moto',
+    name: 'Moto Entregas',
     icon: Icons.two_wheeler_rounded,
-    description: 'Entregas rápidas, documentos, pequenas cargas',
+    description: 'Entregas rápidas, documentos',
     capacity: 'Até 20 kg',
     etaMultiplier: 100,
   ),
@@ -46,9 +47,47 @@ const List<VehicleCategoryInfo> vehicleCategories = [
     id: 'car',
     name: 'Carro',
     icon: Icons.directions_car_rounded,
-    description: 'Encomendas médias, múltiplos volumes',
-    capacity: 'Até 100 kg',
+    description: 'Viagens confortáveis',
+    capacity: 'Até 4 passageiros',
     etaMultiplier: 115,
+  ),
+  VehicleCategoryInfo(
+    category: VehicleCategory.bike,
+    id: 'bike',
+    name: 'Bike Entregas',
+    icon: Icons.pedal_bike_rounded,
+    description: 'Entregas curtas e ecológicas',
+    capacity: 'Até 5 kg',
+    etaMultiplier: 150,
+  ),
+  VehicleCategoryInfo(
+    category: VehicleCategory.mototaxi,
+    id: 'mototaxi',
+    name: 'Moto Táxi',
+    icon: Icons.motorcycle_rounded,
+    description: 'Transporte de passageiros',
+    capacity: '1 passageiro',
+    etaMultiplier: 100,
+  ),
+  VehicleCategoryInfo(
+    category: VehicleCategory.van,
+    id: 'van',
+    name: 'Utilitário',
+    icon: Icons.airport_shuttle_rounded,
+    assetPath: 'assets/utilitario.png',
+    description: 'Fiorinos e furgões',
+    capacity: 'Até 650 kg',
+    etaMultiplier: 130,
+  ),
+  VehicleCategoryInfo(
+    category: VehicleCategory.truck,
+    id: 'truck',
+    name: 'Caminhão',
+    icon: Icons.local_shipping_rounded,
+    assetPath: 'assets/caminhao.png',
+    description: 'Mudanças e móveis pesados',
+    capacity: 'Até 4.000 kg',
+    etaMultiplier: 160,
   ),
 ];
 
@@ -57,8 +96,8 @@ extension VehicleCategoryExtension on VehicleCategory {
       vehicleCategories.firstWhere((v) => v.category == this);
 
   static VehicleCategory fromId(String id) {
-    final match = vehicleCategories.where((v) => v.id == id);
-    if (match.isEmpty) return VehicleCategory.motoboy; // fallback
+    var match = vehicleCategories.where((v) => v.id == id);
+    if (match.isEmpty) return VehicleCategory.motoboy;
     return match.first.category;
   }
 }

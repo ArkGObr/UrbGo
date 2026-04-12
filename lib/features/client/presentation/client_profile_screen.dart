@@ -88,7 +88,7 @@ class _ClientProfileScreenState extends ConsumerState<ClientProfileScreen> {
       }).eq('id', user.id);
 
       // Refresh auth state to load new avatar into context
-      await ref.read(authNotifierProvider.notifier).checkSession();
+      ref.invalidate(authNotifierProvider);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

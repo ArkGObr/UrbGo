@@ -70,10 +70,25 @@ class _CategorySelectorWidgetState extends State<CategorySelectorWidget> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  cat.icon,
-                  size: 38,
-                  color: isSelected ? AppColors.primary : AppColors.textSecondary,
+                SizedBox(
+                  height: 56,
+                  child: Center(
+                    child: cat.assetPath != null
+                        ? Transform.scale(
+                            scaleX: -1,
+                            child: Image.asset(
+                              cat.assetPath!,
+                              width: cat.id == 'truck' ? 56 : 46,
+                              height: cat.id == 'truck' ? 56 : 46,
+                              fit: BoxFit.contain,
+                            ),
+                          )
+                        : Icon(
+                            cat.icon,
+                            size: cat.id == 'truck' ? 48 : 38,
+                            color: isSelected ? AppColors.primary : AppColors.textSecondary,
+                          ),
+                  ),
                 ),
                 const SizedBox(height: AppSpacing.xs),
                 Text(
