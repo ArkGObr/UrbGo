@@ -222,6 +222,10 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
                   Navigator.of(context).pop();
                   context.push('/motoboy/runs');
                 },
+                onHistory: () {
+                  Navigator.of(context).pop();
+                  context.push('/motoboy/history');
+                },
                 onProfile: () {
                   Navigator.of(context).pop();
                   context.push('/motoboy/profile');
@@ -1165,6 +1169,7 @@ class _MotoboyDrawer extends StatelessWidget {
   final VoidCallback onSignOut;
   final VoidCallback onWallet;
   final VoidCallback onRuns;
+  final VoidCallback onHistory;
   final VoidCallback onProfile;
 
   const _MotoboyDrawer({
@@ -1173,6 +1178,7 @@ class _MotoboyDrawer extends StatelessWidget {
     required this.onSignOut,
     required this.onWallet,
     required this.onRuns,
+    required this.onHistory,
     required this.onProfile,
   });
 
@@ -1358,6 +1364,11 @@ class _MotoboyDrawer extends StatelessWidget {
             icon: Icons.motorcycle_rounded,
             label: 'Corridas',
             onTap: onRuns,
+          ),
+          _DrawerNavItem(
+            icon: Icons.history_rounded,
+            label: 'Histórico',
+            onTap: onHistory,
           ),
           _DrawerNavItem(
             icon: Icons.person_outline_rounded,

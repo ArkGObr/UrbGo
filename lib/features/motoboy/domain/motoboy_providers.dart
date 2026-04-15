@@ -78,3 +78,11 @@ final transactionsProvider =
       .limit(30);
   return (data as List).map((e) => TransactionModel.fromJson(e)).toList();
 });
+
+/// Histórico de corridas realizadas (finalizadas ou canceladas)
+final runHistoryProvider =
+    FutureProvider<List<DeliveryModel>>((ref) async {
+  final user = ref.watch(authNotifierProvider).valueOrNull;
+  if (user == null) return [];
+  return ref.read(motoboyRepositoryProvider).getRunHistory(user.id);
+});

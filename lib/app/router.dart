@@ -16,6 +16,7 @@ import '../features/motoboy/presentation/available_runs_screen.dart';
 import '../features/motoboy/presentation/active_run_screen.dart';
 import '../features/motoboy/presentation/wallet_screen.dart';
 import '../features/motoboy/presentation/motoboy_profile_screen.dart';
+import '../features/motoboy/presentation/run_history_screen.dart';
 import '../core/constants/vehicle_categories.dart';
 import 'page_transitions.dart';
 
@@ -174,6 +175,13 @@ final routerProvider = Provider<GoRouter>((ref) {
             pageBuilder: (_, state) => slideUpFadeTransition(
               key: state.pageKey,
               child: const WalletScreen(),
+            ),
+          ),
+          GoRoute(
+            path: '/motoboy/history',
+            pageBuilder: (_, state) => slideUpFadeTransition(
+              key: state.pageKey,
+              child: const RunHistoryScreen(),
             ),
           ),
           GoRoute(

@@ -53,11 +53,11 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
                 _customAmountCtrl.text.replaceAll(',', '.').trim()) ??
             0;
 
-    if (amount < 10) {
+    if (amount < 20) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Valor mínimo de recarga: R\$ 10,00',
+            'Valor mínimo de recarga: R\$ 20,00',
             style:
                 AppTypography.bodyMedium.copyWith(color: AppColors.textPrimary),
           ),

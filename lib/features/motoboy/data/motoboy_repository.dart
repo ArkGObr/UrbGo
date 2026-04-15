@@ -104,6 +104,18 @@ class MotoboyRepository {
         .subscribe();
   }
 
+  /// Buscar histórico de corridas finalizadas ou canceladas pelo motoboy
+  Future<List<DeliveryModel>> getRunHistory(String motoboyId) async {
+    final data = await _db
+        .from('deliveries')
+        .select('*, motoboys(vehicle_plate, current_lat, current_lng, users(name, phone))')
+        .eq('motoboy_id', motoboyId)
+        .inFilter('status', ['completed', 'cancelled'])
+        .order('created_at', ascending: false)
+        .limit(50);
+    return (data as List).map((e) => DeliveryModel.fromJson(e)).toList();
+  }
+
   // ── ACEITAR CORRIDA ──────────────────────────────────────
   /// Valida saldo ANTES de aceitar
   Future<void> acceptDelivery({

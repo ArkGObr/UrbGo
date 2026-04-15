@@ -19,9 +19,6 @@ class PricePreviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final commission = PriceCalculator.commission(totalValue);
-    final netForDriver = PriceCalculator.netValue(totalValue);
-
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
@@ -47,19 +44,6 @@ class PricePreviewCard extends StatelessWidget {
             color: AppColors.surfaceBorder,
             height: AppSpacing.xl.toDouble(),
           ),
-          _PriceRow(
-            'Valor da entrega',
-            CurrencyFormatter.format(totalValue),
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          _PriceRow(
-            'Repasse ao entregador (75%)',
-            CurrencyFormatter.format(netForDriver),
-          ),
-          Divider(
-            color: AppColors.surfaceBorder,
-            height: AppSpacing.lg.toDouble(),
-          ),
           Row(
             children: [
               Text('Total', style: AppTypography.h4),
@@ -67,21 +51,6 @@ class PricePreviewCard extends StatelessWidget {
               Text(
                 CurrencyFormatter.format(totalValue),
                 style: AppTypography.numericMedium,
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          Row(
-            children: [
-              const Icon(
-                Icons.info_outline_rounded,
-                size: 12,
-                color: AppColors.textTertiary,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                'Taxa de serviço UrbGo: ${CurrencyFormatter.format(commission)}',
-                style: AppTypography.bodySmall,
               ),
             ],
           ),
