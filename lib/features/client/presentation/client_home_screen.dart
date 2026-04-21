@@ -339,7 +339,7 @@ class _ClientHomeScreenState extends ConsumerState<ClientHomeScreen> {
                     ),
                     const SizedBox(height: AppSpacing.sm),
                     SizedBox(
-                      height: 220,
+                      height: 240,
                       child: ListView.separated(
                         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                         scrollDirection: Axis.horizontal,

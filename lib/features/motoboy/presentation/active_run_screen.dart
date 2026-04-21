@@ -10,14 +10,16 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/constants/vehicle_categories.dart';
 import '../../../core/services/logger_service.dart';
 import '../../../core/services/route_service.dart';
 import '../../../core/utils/currency_formatter.dart';
+import '../../../core/widgets/app_toast.dart';
 import '../../client/domain/delivery_model.dart';
 import '../../shared/widgets/primary_button.dart';
 import '../../shared/widgets/vehicle_badge.dart';
 import '../domain/motoboy_providers.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'navigation_screen.dart';
 
 /// Provider local para a posição do motoboy em tempo real
 final _myPositionProvider = StateProvider<LatLng?>((ref) => null);
@@ -40,7 +42,6 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
   DeliveryModel? _delivery;
   bool _isLoading = true;
   List<LatLng> _routePoints = [];
-  bool _isNavigating = false;
 
   @override
   void initState() {
@@ -81,7 +82,9 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
             },
             child: Text(
               'Ativar GPS',
-              style: AppTypography.labelLarge.copyWith(color: AppColors.primary),
+              style: AppTypography.labelLarge.copyWith(
+                color: AppColors.primary,
+              ),
             ),
           ),
         ],
@@ -130,10 +133,15 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
     final dest = goingToPickup
         ? LatLng(_delivery!.pickupLat, _delivery!.pickupLng)
         : LatLng(_delivery!.deliveryLat, _delivery!.deliveryLng);
-    final start = ref.read(_myPositionProvider) ??
+    final start =
+        ref.read(_myPositionProvider) ??
         LatLng(_delivery!.pickupLat, _delivery!.pickupLng);
-    
+
     try {
+      if (start == dest) {
+        _mapController.move(dest, 16);
+        return;
+      }
       _mapController.fitCamera(
         CameraFit.bounds(
           bounds: LatLngBounds(start, dest),
@@ -144,40 +152,48 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
   }
 
   void _startPositionStream() {
-    _positionStream = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 2, // Frequência maior para navegação fluida
-      ),
-    ).listen((pos) {
-      if (!mounted) return;
-      final latLng = LatLng(pos.latitude, pos.longitude);
-      ref.read(_myPositionProvider.notifier).state = latLng;
-      
-      // Auto-centraliza se estiver no modo navegação
-      if (_isNavigating) {
-        _mapController.move(latLng, 18.0);
-      }
-    });
+    _positionStream =
+        Geolocator.getPositionStream(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 2, // Frequência maior para navegação fluida
+          ),
+        ).listen((pos) {
+          if (!mounted) return;
+          final latLng = LatLng(pos.latitude, pos.longitude);
+          ref.read(_myPositionProvider.notifier).state = latLng;
+        });
   }
 
-  void _toggleNavigation() {
-    setState(() => _isNavigating = !_isNavigating);
-    if (_isNavigating) {
-      final myPos = ref.read(_myPositionProvider);
-      if (myPos != null) {
-        _mapController.move(myPos, 18.0);
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Aguardando sinal de GPS...'), 
-            backgroundColor: AppColors.surface,
-          ),
-        );
-      }
-    } else {
-      _fitBounds();
-    }
+  Future<void> _openGoogleNavigation() async {
+    final delivery = _delivery;
+    if (delivery == null) return;
+
+    final goingToPickup = delivery.status == DeliveryStatus.accepted;
+    final destination = goingToPickup
+        ? LatLng(delivery.pickupLat, delivery.pickupLng)
+        : LatLng(delivery.deliveryLat, delivery.deliveryLng);
+    final destinationLabel = goingToPickup
+        ? delivery.pickupAddress
+        : delivery.deliveryAddress;
+
+    final origin =
+        ref.read(_myPositionProvider) ??
+        LatLng(delivery.pickupLat, delivery.pickupLng);
+
+    if (!mounted) return;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => NavigationScreen(
+          originLat: origin.latitude,
+          originLng: origin.longitude,
+          destLat: destination.latitude,
+          destLng: destination.longitude,
+          destLabel: destinationLabel,
+        ),
+      ),
+    );
   }
 
   @override
@@ -204,15 +220,21 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancelar',
-                style: AppTypography.labelLarge
-                    .copyWith(color: AppColors.textSecondary)),
+            child: Text(
+              'Cancelar',
+              style: AppTypography.labelLarge.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Confirmar',
-                style: AppTypography.labelLarge
-                    .copyWith(color: AppColors.primary)),
+            child: Text(
+              'Confirmar',
+              style: AppTypography.labelLarge.copyWith(
+                color: AppColors.primary,
+              ),
+            ),
           ),
         ],
       ),
@@ -222,11 +244,22 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
     setState(() => _isProcessing = true);
     try {
       await ref.read(motoboyRepositoryProvider).confirmPickup(deliveryId);
-      await _loadDelivery(); // Recarrega dados
+      await _loadDelivery();
+      if (mounted) {
+        AppToast.show(
+          context,
+          title: 'Coleta confirmada!',
+          subtitle: 'Agora siga para o ponto de entrega',
+          type: AppToastType.success,
+        );
+      }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro: $e'), backgroundColor: AppColors.surface),
+        AppToast.show(
+          context,
+          title: 'Erro ao confirmar coleta',
+          subtitle: e.toString(),
+          type: AppToastType.error,
         );
       }
     } finally {
@@ -250,15 +283,21 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancelar',
-                style: AppTypography.labelLarge
-                    .copyWith(color: AppColors.textSecondary)),
+            child: Text(
+              'Cancelar',
+              style: AppTypography.labelLarge.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Finalizar',
-                style: AppTypography.labelLarge
-                    .copyWith(color: AppColors.primary)),
+            child: Text(
+              'Finalizar',
+              style: AppTypography.labelLarge.copyWith(
+                color: AppColors.primary,
+              ),
+            ),
           ),
         ],
       ),
@@ -271,13 +310,16 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
       ref.invalidate(availableRunsProvider);
       ref.invalidate(motoboyStreamProvider);
       if (mounted) {
-        final earnings = delivery.value - delivery.commission;
+        final earnings = delivery.value;
         await _showSuccessDialog(earnings, delivery.commission);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro: $e'), backgroundColor: AppColors.surface),
+        AppToast.show(
+          context,
+          title: 'Erro ao finalizar entrega',
+          subtitle: e.toString(),
+          type: AppToastType.error,
         );
       }
     } finally {
@@ -305,8 +347,11 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                 color: AppColors.primary.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.check_rounded,
-                  color: AppColors.primary, size: 40),
+              child: const Icon(
+                Icons.check_rounded,
+                color: AppColors.primary,
+                size: 40,
+              ),
             ),
             const SizedBox(height: AppSpacing.xl2),
             Text('Entrega Concluída!', style: AppTypography.h2),
@@ -322,22 +367,9 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Valor da corrida', style: AppTypography.bodyMedium),
+                      Text('Comissão', style: AppTypography.bodySmall),
                       Text(
-                        CurrencyFormatter.format(earnings + commission),
-                        style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Comissão (25%)', style: AppTypography.bodySmall),
-                      Text(
-                        '- ${CurrencyFormatter.format(commission)}',
+                        'Descontado da carteira: ${CurrencyFormatter.format(commission)}',
                         style: AppTypography.bodySmall.copyWith(
                           color: AppColors.error,
                         ),
@@ -350,7 +382,7 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Você recebeu', style: AppTypography.labelLarge),
+                      Text('Você deve receber', style: AppTypography.labelLarge),
                       Text(
                         CurrencyFormatter.format(earnings),
                         style: AppTypography.numericLarge,
@@ -442,8 +474,11 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                                 ),
                               ],
                             ),
-                            child: const Icon(Icons.store_rounded,
-                                color: Colors.white, size: 18),
+                            child: const Icon(
+                              Icons.store_rounded,
+                              color: Colors.white,
+                              size: 18,
+                            ),
                           ),
                         ),
                         // Entrega
@@ -457,13 +492,18 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
-                                  color: AppColors.primary.withValues(alpha: 0.4),
+                                  color: AppColors.primary.withValues(
+                                    alpha: 0.4,
+                                  ),
                                   blurRadius: 8,
                                 ),
                               ],
                             ),
-                            child: const Icon(Icons.flag_rounded,
-                                color: Colors.white, size: 18),
+                            child: const Icon(
+                              Icons.flag_rounded,
+                              color: Colors.white,
+                              size: 18,
+                            ),
                           ),
                         ),
                         // Minha posição
@@ -482,13 +522,15 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                                 ),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: AppColors.info.withValues(alpha: 0.4),
+                                    color: AppColors.info.withValues(
+                                      alpha: 0.4,
+                                    ),
                                     blurRadius: 12,
                                   ),
                                 ],
                               ),
-                              child: const Icon(
-                                Icons.two_wheeler_rounded,
+                              child: Icon(
+                                delivery.vehicleCategory.info.icon,
                                 color: AppColors.info,
                                 size: 22,
                               ),
@@ -517,8 +559,11 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                           ),
                         ],
                       ),
-                      child: const Icon(Icons.arrow_back_rounded,
-                          color: AppColors.textPrimary, size: 22),
+                      child: const Icon(
+                        Icons.arrow_back_rounded,
+                        color: AppColors.textPrimary,
+                        size: 22,
+                      ),
                     ),
                   ),
                 ),
@@ -529,6 +574,7 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                   right: AppSpacing.lg,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       // Re-center
                       if (myPos != null)
@@ -543,7 +589,9 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                               height: 44,
                               decoration: BoxDecoration(
                                 color: AppColors.background,
-                                borderRadius: BorderRadius.circular(AppRadius.full),
+                                borderRadius: BorderRadius.circular(
+                                  AppRadius.full,
+                                ),
                                 boxShadow: [
                                   BoxShadow(
                                     color: Colors.black.withValues(alpha: 0.2),
@@ -561,18 +609,18 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                         ),
                       // Navegar GPS
                       GestureDetector(
-                        onTap: _toggleNavigation,
+                        onTap: _openGoogleNavigation,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 16,
                             vertical: 12,
                           ),
                           decoration: BoxDecoration(
-                            color: _isNavigating ? AppColors.error : AppColors.primary,
+                            color: AppColors.primary,
                             borderRadius: BorderRadius.circular(AppRadius.full),
                             boxShadow: [
                               BoxShadow(
-                                color: (_isNavigating ? AppColors.error : AppColors.primary).withValues(alpha: 0.4),
+                                color: AppColors.primary.withValues(alpha: 0.4),
                                 blurRadius: 12,
                                 offset: const Offset(0, 4),
                               ),
@@ -581,14 +629,14 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(
-                                _isNavigating ? Icons.close_rounded : Icons.navigation_rounded,
+                              const Icon(
+                                Icons.navigation_rounded,
                                 color: Colors.white,
                                 size: 20,
                               ),
                               const SizedBox(width: 6),
                               Text(
-                                _isNavigating ? 'Sair da Navegação' : 'Navegar',
+                                'Abrir no Google Maps',
                                 style: AppTypography.labelLarge.copyWith(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w700,
@@ -612,9 +660,7 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
               borderRadius: BorderRadius.vertical(
                 top: Radius.circular(AppRadius.xl),
               ),
-              border: Border(
-                top: BorderSide(color: AppColors.surfaceBorder),
-              ),
+              border: Border(top: BorderSide(color: AppColors.surfaceBorder)),
             ),
             child: SafeArea(
               top: false,
@@ -637,73 +683,109 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                     ),
                     const SizedBox(height: AppSpacing.lg),
 
-                    if (!_isNavigating) ...[
-                      // Categoria + status
-                      Row(
-                        children: [
-                          VehicleBadge(category: delivery.vehicleCategory),
-                          const Spacer(),
+                    // Categoria + status
+                    Row(
+                      children: [
+                        VehicleBadge(category: delivery.vehicleCategory),
+                        const Spacer(),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.md,
+                            vertical: AppSpacing.xs,
+                          ),
+                          decoration: BoxDecoration(
+                            color: delivery.status.color.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(AppRadius.full),
+                            border: Border.all(
+                              color: delivery.status.color.withValues(
+                                alpha: 0.3,
+                              ),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                delivery.status.icon,
+                                color: delivery.status.color,
+                                size: 14,
+                              ),
+                              const SizedBox(width: AppSpacing.xs),
+                              Text(
+                                delivery.status.label,
+                                style: AppTypography.labelSmall.copyWith(
+                                  color: delivery.status.color,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+
+                    // Valor + distância
+                    Row(
+                      children: [
+                        Text('Valor', style: AppTypography.bodyMedium),
+                        const Spacer(),
+                        if (delivery.distanceKm != null) ...[
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: AppSpacing.md,
-                              vertical: AppSpacing.xs,
+                              horizontal: AppSpacing.sm,
+                              vertical: 3,
                             ),
                             decoration: BoxDecoration(
-                              color: delivery.status.color.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(AppRadius.full),
-                              border: Border.all(
-                                color: delivery.status.color.withValues(alpha: 0.3),
+                              color: AppColors.surfaceBorder.withValues(
+                                alpha: 0.5,
                               ),
+                              borderRadius: BorderRadius.circular(AppRadius.xs),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(delivery.status.icon,
-                                    color: delivery.status.color, size: 14),
-                                const SizedBox(width: AppSpacing.xs),
+                                const Icon(
+                                  Icons.straighten_rounded,
+                                  size: 11,
+                                  color: AppColors.textTertiary,
+                                ),
+                                const SizedBox(width: 3),
                                 Text(
-                                  delivery.status.label,
+                                  '${delivery.distanceKm!.toStringAsFixed(1)} km',
                                   style: AppTypography.labelSmall.copyWith(
-                                    color: delivery.status.color,
-                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.textTertiary,
+                                    fontSize: 11,
                                   ),
                                 ),
                               ],
                             ),
                           ),
+                          const SizedBox(width: AppSpacing.sm),
                         ],
-                      ),
-                      const SizedBox(height: AppSpacing.lg),
+                        Text(
+                          CurrencyFormatter.format(delivery.value),
+                          style: AppTypography.numericLarge,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.md),
 
-                      // Valor
-                      Row(
-                        children: [
-                          Text('Valor', style: AppTypography.bodyMedium),
-                          const Spacer(),
-                          Text(
-                            CurrencyFormatter.format(delivery.value),
-                            style: AppTypography.numericLarge,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-
-                      // Endereços
-                      _AddressRow(
-                        icon: Icons.store_rounded,
-                        iconColor: AppColors.error,
-                        label: 'Coleta',
-                        address: delivery.pickupAddress,
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                      _AddressRow(
-                        icon: Icons.flag_rounded,
-                        iconColor: AppColors.primary,
-                        label: 'Entrega',
-                        address: delivery.deliveryAddress,
-                      ),
-                      const SizedBox(height: AppSpacing.xl2),
-                    ],
+                    // Endereços
+                    _AddressRow(
+                      icon: Icons.store_rounded,
+                      iconColor: AppColors.error,
+                      label: 'Coleta',
+                      address: delivery.pickupAddress,
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    _AddressRow(
+                      icon: Icons.flag_rounded,
+                      iconColor: AppColors.primary,
+                      label: 'Entrega',
+                      address: delivery.deliveryAddress,
+                    ),
+                    const SizedBox(height: AppSpacing.xl2),
 
                     // Botões de ação SEMPRE VISÍVEIS no modo direção
                     if (delivery.status == DeliveryStatus.accepted)

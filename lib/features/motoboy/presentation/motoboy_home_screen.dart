@@ -17,6 +17,7 @@ import '../../../core/constants/app_typography.dart';
 import '../../../core/constants/vehicle_categories.dart';
 import '../../../core/services/connectivity_service.dart';
 import '../../../core/utils/currency_formatter.dart';
+import '../../../core/widgets/app_toast.dart';
 import '../../auth/domain/auth_provider.dart';
 import '../../client/domain/delivery_model.dart';
 import '../../shared/widgets/primary_button.dart';
@@ -153,15 +154,11 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
         final hasPermission = await _requestLocationPermission();
         if (!hasPermission) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Permissão de localização necessária para ficar online',
-                  style: AppTypography.bodyMedium
-                      .copyWith(color: AppColors.textPrimary),
-                ),
-                backgroundColor: AppColors.surface,
-              ),
+            AppToast.show(
+              context,
+              title: 'Localização necessária',
+              subtitle: 'Ative a permissão de localização para ficar online',
+              type: AppToastType.warning,
             );
           }
           return;
@@ -169,17 +166,33 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
         await repo.setOnline(user.id, true);
         repo.startLocationUpdates(user.id);
         await _initPosition();
+        if (mounted) {
+          AppToast.show(
+            context,
+            title: 'Você está online!',
+            subtitle: 'Buscando corridas disponíveis...',
+            type: AppToastType.success,
+          );
+        }
       } else {
         repo.stopLocationUpdates();
         await repo.setOnline(user.id, false);
+        if (mounted) {
+          AppToast.show(
+            context,
+            title: 'Modo offline ativado',
+            subtitle: 'Você não receberá novas corridas',
+            type: AppToastType.info,
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro: $e'),
-            backgroundColor: AppColors.surface,
-          ),
+        AppToast.show(
+          context,
+          title: 'Erro ao alterar status',
+          subtitle: e.toString(),
+          type: AppToastType.error,
         );
       }
     } finally {
@@ -852,12 +865,27 @@ class _VehicleCategoryCard extends StatelessWidget {
             ],
           ),
           const Spacer(),
-          Text(
-            info.capacity.split(' • ').first,
-            style: AppTypography.bodySmall.copyWith(
-              color: AppColors.textTertiary,
+          if (motoboy.totalRatings > 0) ...[
+            const Icon(Icons.star_rounded, size: 14, color: Color(0xFFFFC107)),
+            const SizedBox(width: 3),
+            Text(
+              '${motoboy.avgRating.toStringAsFixed(1)} (${motoboy.totalRatings})',
+              style: AppTypography.labelSmall.copyWith(
+                color: AppColors.textSecondary,
+                fontSize: 11,
+              ),
             ),
-          ),
+            const SizedBox(width: AppSpacing.sm),
+          ] else ...[
+            Text(
+              'Novo',
+              style: AppTypography.labelSmall.copyWith(
+                color: AppColors.primary,
+                fontSize: 11,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+          ],
         ],
       ),
     );

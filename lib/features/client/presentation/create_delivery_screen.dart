@@ -13,6 +13,7 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/constants/vehicle_categories.dart';
+import '../../../core/services/dynamic_pricing_service.dart';
 import '../../../core/services/geocoding_service.dart';
 import '../../../core/services/route_service.dart';
 import '../../auth/domain/auth_provider.dart';
@@ -72,6 +73,8 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
 
   LatLng? _userLocation;
 
+  SurgeInfo? _surgeInfo;
+
   @override
   void initState() {
     super.initState();
@@ -80,6 +83,7 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
       _step = 1; // Skip the vehicle selection step!
     }
     _fetchUserLocation();
+    _loadSurgeInfo();
     _pickupCtrl.addListener(_onPickupChanged);
     _deliveryCtrl.addListener(_onDeliveryChanged);
     _pickupFocus.addListener(() {
@@ -113,6 +117,14 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
   // ─────────────────────────────────────────────────────────
   // Location
   // ─────────────────────────────────────────────────────────
+
+  Future<void> _loadSurgeInfo() async {
+    final surge = await DynamicPricingService().getCurrentSurge();
+    if (mounted) {
+      setState(() => _surgeInfo = surge);
+      if (_pickupLatLng != null && _deliveryLatLng != null) _recalculate();
+    }
+  }
 
   Future<void> _fetchUserLocation() async {
     try {
@@ -331,7 +343,12 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
       
       // Se os pontos não mudaram enquanto a requisição rodava:
       if (_pickupLatLng == from && _deliveryLatLng == to) {
-        final realVal = PriceCalculator.calculate(_selectedCategory!, result.distanceKm);
+        final multiplier = _surgeInfo?.multiplier ?? 1.0;
+        final realVal = PriceCalculator.calculate(
+          _selectedCategory!,
+          result.distanceKm,
+          surgeMultiplier: multiplier,
+        );
         setState(() {
           _routePoints = result.points;
           _routeResult = result;
@@ -349,6 +366,10 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
   void _fitMapBounds() {
     if (_pickupLatLng == null || _deliveryLatLng == null) return;
     try {
+      if (_pickupLatLng == _deliveryLatLng) {
+        _mapController.move(_pickupLatLng!, 16);
+        return;
+      }
       _mapController.fitCamera(
         CameraFit.bounds(
           bounds: LatLngBounds(_pickupLatLng!, _deliveryLatLng!),
@@ -396,7 +417,7 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
       final ok = await _ensureGeocoded();
       if (!ok || !mounted) return;
 
-      if (_deliveryValue == null) return;
+      if (_deliveryValue == null || _distanceKm == null) return;
 
       final user = ref.read(authNotifierProvider).valueOrNull;
       if (user == null) return;
@@ -412,6 +433,7 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
                 deliveryLng: _deliveryLatLng!.longitude,
                 value: _deliveryValue!,
                 paymentMethod: _paymentMethod,
+                distanceKm: _distanceKm!,
                 vehicleCategory:
                     _selectedCategory?.category ?? VehicleCategory.motoboy,
               );
@@ -641,6 +663,7 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
               category: _selectedCategory!,
               distanceKm: _distanceKm!,
               totalValue: _deliveryValue!,
+              surgeInfo: _surgeInfo,
             ),
           const SizedBox(height: AppSpacing.xl2),
 

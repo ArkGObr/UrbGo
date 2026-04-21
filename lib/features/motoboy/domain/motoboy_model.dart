@@ -15,6 +15,8 @@ class MotoboyModel {
   final int? vehicleYear;
   final String? avatarUrl;
   final String? description;
+  final double avgRating;
+  final int totalRatings;
 
   const MotoboyModel({
     required this.id,
@@ -31,6 +33,8 @@ class MotoboyModel {
     this.vehicleYear,
     this.avatarUrl,
     this.description,
+    this.avgRating = 5.0,
+    this.totalRatings = 0,
   });
 
   /// Retorna true se tem saldo suficiente para aceitar a corrida
@@ -56,6 +60,8 @@ class MotoboyModel {
       vehicleYear: json['vehicle_year'] as int?,
       avatarUrl: json['avatar_url'] as String?,
       description: json['description'] as String?,
+      avgRating: (json['avg_rating'] as num?)?.toDouble() ?? 5.0,
+      totalRatings: json['total_ratings'] as int? ?? 0,
     );
   }
 
@@ -74,6 +80,8 @@ class MotoboyModel {
     int? vehicleYear,
     String? avatarUrl,
     String? description,
+    double? avgRating,
+    int? totalRatings,
   }) {
     return MotoboyModel(
       id: id ?? this.id,
@@ -90,6 +98,13 @@ class MotoboyModel {
       vehicleYear: vehicleYear ?? this.vehicleYear,
       avatarUrl: avatarUrl ?? this.avatarUrl,
       description: description ?? this.description,
+      avgRating: avgRating ?? this.avgRating,
+      totalRatings: totalRatings ?? this.totalRatings,
     );
+  }
+
+  String get ratingLabel {
+    if (totalRatings == 0) return 'Novo';
+    return avgRating.toStringAsFixed(1);
   }
 }

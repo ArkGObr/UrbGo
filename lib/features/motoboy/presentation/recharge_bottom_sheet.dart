@@ -8,6 +8,8 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/services/payment_service.dart';
+import '../../../core/utils/currency_formatter.dart';
+import '../../../core/widgets/app_toast.dart';
 import '../../shared/widgets/primary_button.dart';
 import '../domain/motoboy_providers.dart';
 
@@ -54,15 +56,11 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
             0;
 
     if (amount < 20) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Valor mínimo de recarga: R\$ 20,00',
-            style:
-                AppTypography.bodyMedium.copyWith(color: AppColors.textPrimary),
-          ),
-          backgroundColor: AppColors.surface,
-        ),
+      AppToast.show(
+        context,
+        title: 'Valor mínimo não atingido',
+        subtitle: 'O valor mínimo de recarga é R\$ 20,00',
+        type: AppToastType.warning,
       );
       return;
     }
@@ -82,6 +80,13 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
         ref.invalidate(transactionsProvider);
         if (mounted) {
           setState(() => _step = 2);
+          AppToast.show(
+            context,
+            title: 'Saldo recarregado!',
+            subtitle: '${CurrencyFormatter.format(amount)} adicionado à sua carteira',
+            type: AppToastType.success,
+            duration: const Duration(seconds: 5),
+          );
         }
       } else {
         // Modo produção: gera QR Code real
@@ -99,24 +104,11 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.error_outline, color: AppColors.error, size: 18),
-                const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: Text(
-                    'Erro: ${e.toString()}',
-                    style: AppTypography.bodyMedium
-                        .copyWith(color: AppColors.textPrimary),
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: AppColors.surface,
-            behavior: SnackBarBehavior.floating,
-          ),
+        AppToast.show(
+          context,
+          title: 'Erro ao gerar cobrança',
+          subtitle: e.toString(),
+          type: AppToastType.error,
         );
       }
     } finally {
@@ -170,6 +162,14 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
               _step = 2;
               _isPolling = false;
             });
+            AppToast.show(
+              context,
+              title: 'PIX confirmado!',
+              subtitle:
+                  '${CurrencyFormatter.format(_selectedAmount)} adicionado à sua carteira',
+              type: AppToastType.success,
+              duration: const Duration(seconds: 5),
+            );
           }
           return;
         }
@@ -180,16 +180,12 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
 
     if (mounted) {
       setState(() => _isPolling = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Pagamento não detectado. Aguarde alguns instantes e tente novamente.',
-            style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.textPrimary,
-            ),
-          ),
-          backgroundColor: AppColors.surface,
-        ),
+      AppToast.show(
+        context,
+        title: 'Pagamento não detectado',
+        subtitle: 'Aguarde alguns instantes e tente novamente',
+        type: AppToastType.warning,
+        duration: const Duration(seconds: 6),
       );
     }
   }

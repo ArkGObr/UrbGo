@@ -1,10 +1,10 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/widgets/app_toast.dart';
 import '../../../core/constants/vehicle_categories.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../auth/domain/auth_provider.dart';
@@ -26,6 +26,7 @@ class AvailableRunsScreen extends ConsumerStatefulWidget {
 class _AvailableRunsScreenState extends ConsumerState<AvailableRunsScreen> {
   bool _isAccepting = false;
   String? _acceptingId;
+  int _lastRunCount = -1;
 
   Future<void> _acceptRun(DeliveryModel delivery) async {
     final user = ref.read(authNotifierProvider).valueOrNull;
@@ -159,6 +160,30 @@ class _AvailableRunsScreenState extends ConsumerState<AvailableRunsScreen> {
     final runsAsync = ref.watch(availableRunsProvider);
     final motoboyAsync = ref.watch(motoboyStreamProvider);
     final categoryName = motoboyAsync.valueOrNull?.vehicleCategory.info.name;
+
+    ref.listen<AsyncValue<List<DeliveryModel>>>(
+      availableRunsProvider,
+      (prev, next) {
+        final prevList = prev?.valueOrNull ?? [];
+        final nextList = next.valueOrNull ?? [];
+        // Exibe toast apenas quando novas corridas aparecem (não no carregamento inicial)
+        if (_lastRunCount >= 0 && nextList.length > prevList.length) {
+          final newCount = nextList.length - prevList.length;
+          final value = nextList.first.value;
+          AppToast.show(
+            context,
+            title: newCount == 1
+                ? 'Nova corrida disponível!'
+                : '$newCount novas corridas disponíveis!',
+            subtitle:
+                'Você recebe ${CurrencyFormatter.format(value)} • Aceite rápido!',
+            type: AppToastType.info,
+            duration: const Duration(seconds: 5),
+          );
+        }
+        _lastRunCount = nextList.length;
+      },
+    );
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -318,26 +343,11 @@ class _RunCard extends StatelessWidget {
     required this.onAccept,
   });
 
-  double _haversineDistanceKm(double lat1, double lng1, double lat2, double lng2) {
-    const r = 6371.0;
-    final dLat = (lat2 - lat1) * pi / 180;
-    final dLon = (lng2 - lng1) * pi / 180;
-    final h = sin(dLat / 2) * sin(dLat / 2) +
-        cos(lat1 * pi / 180) *
-            cos(lat2 * pi / 180) *
-            sin(dLon / 2) *
-            sin(dLon / 2);
-    return r * 2 * asin(sqrt(h));
-  }
-
   @override
   Widget build(BuildContext context) {
-    final distKm = _haversineDistanceKm(
-      delivery.pickupLat,
-      delivery.pickupLng,
-      delivery.deliveryLat,
-      delivery.deliveryLng,
-    );
+    // Usa a distância real de rua salva no banco (a mesma usada para calcular o preço).
+    // Se por algum motivo não estiver no banco (entrega antiga), mostra "—".
+    final distKm = delivery.distanceKm;
 
     return Container(
       padding: AppSpacing.cardPadding,
@@ -411,9 +421,7 @@ class _RunCard extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    CurrencyFormatter.format(
-                      PriceCalculator.netValue(delivery.value),
-                    ),
+                    CurrencyFormatter.format(delivery.value),
                     style: AppTypography.numericMedium.copyWith(
                       color: AppColors.primary,
                     ),
@@ -424,12 +432,14 @@ class _RunCard extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.sm),
 
-          // Info chips: distância
+          // Info chips: distância real de rua + valor total
           Row(
             children: [
               _InfoChip(
                 icon: Icons.straighten_rounded,
-                label: '${distKm.toStringAsFixed(1)} km',
+                label: distKm != null
+                    ? '${distKm.toStringAsFixed(1)} km'
+                    : '— km',
               ),
               const SizedBox(width: AppSpacing.sm),
               _InfoChip(

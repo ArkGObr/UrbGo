@@ -74,6 +74,9 @@ class DeliveryModel {
   final String? motoboyPlate;
   final double? motoboyLat;
   final double? motoboyLng;
+  final double? motoboyAvgRating;
+  final int? motoboyTotalRatings;
+  final double? distanceKm;
 
   const DeliveryModel({
     required this.id,
@@ -98,6 +101,9 @@ class DeliveryModel {
     this.motoboyPlate,
     this.motoboyLat,
     this.motoboyLng,
+    this.motoboyAvgRating,
+    this.motoboyTotalRatings,
+    this.distanceKm,
   });
 
   factory DeliveryModel.fromJson(Map<String, dynamic> json) {
@@ -141,6 +147,13 @@ class DeliveryModel {
       motoboyLng: motoboy != null
           ? (motoboy['current_lng'] as num?)?.toDouble()
           : null,
+      motoboyAvgRating: motoboy != null
+          ? (motoboy['avg_rating'] as num?)?.toDouble()
+          : null,
+      motoboyTotalRatings: motoboy != null
+          ? motoboy['total_ratings'] as int?
+          : null,
+      distanceKm: (json['distance_km'] as num?)?.toDouble(),
     );
   }
 
@@ -167,6 +180,9 @@ class DeliveryModel {
     String? motoboyPlate,
     double? motoboyLat,
     double? motoboyLng,
+    double? motoboyAvgRating,
+    int? motoboyTotalRatings,
+    double? distanceKm,
   }) {
     return DeliveryModel(
       id: id ?? this.id,
@@ -191,6 +207,9 @@ class DeliveryModel {
       motoboyPlate: motoboyPlate ?? this.motoboyPlate,
       motoboyLat: motoboyLat ?? this.motoboyLat,
       motoboyLng: motoboyLng ?? this.motoboyLng,
+      motoboyAvgRating: motoboyAvgRating ?? this.motoboyAvgRating,
+      motoboyTotalRatings: motoboyTotalRatings ?? this.motoboyTotalRatings,
+      distanceKm: distanceKm ?? this.distanceKm,
     );
   }
 

@@ -8,11 +8,16 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/constants/vehicle_categories.dart';
 import '../../../core/utils/currency_formatter.dart';
+import '../../../core/widgets/app_toast.dart';
+import '../../../core/services/route_service.dart';
 import '../../shared/widgets/primary_button.dart';
 import '../../shared/widgets/vehicle_badge.dart';
+import '../data/rating_repository.dart';
 import '../domain/client_providers.dart';
 import '../domain/delivery_model.dart';
+import 'widgets/rating_bottom_sheet.dart';
 
 
 class TrackingScreen extends ConsumerStatefulWidget {
@@ -37,6 +42,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
 
   List<LatLng> _routePoints = [];
   bool _isCancelling = false;
+  bool _hasShownRating = false;
 
   @override
   void initState() {
@@ -172,9 +178,60 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     }
   }
 
+  void _onStatusChanged(DeliveryStatus prev, DeliveryStatus next) {
+    if (!mounted) return;
+    switch (next) {
+      case DeliveryStatus.accepted:
+        AppToast.show(
+          context,
+          title: 'Entregador a caminho!',
+          subtitle: 'Seu pedido foi aceito',
+          type: AppToastType.info,
+        );
+      case DeliveryStatus.inProgress:
+        AppToast.show(
+          context,
+          title: 'Pacote coletado!',
+          subtitle: 'Seu pedido está sendo entregue',
+          type: AppToastType.success,
+        );
+      case DeliveryStatus.completed:
+        AppToast.show(
+          context,
+          title: 'Entrega concluída!',
+          subtitle: 'Seu pedido chegou com sucesso',
+          type: AppToastType.success,
+          duration: const Duration(seconds: 5),
+        );
+      case DeliveryStatus.cancelled:
+        AppToast.show(
+          context,
+          title: 'Entrega cancelada',
+          subtitle: 'Entre em contato com o suporte se precisar de ajuda',
+          type: AppToastType.error,
+          duration: const Duration(seconds: 6),
+        );
+      default:
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final deliveryAsync = ref.watch(deliveryStreamProvider(widget.deliveryId));
+
+    ref.listen<AsyncValue<DeliveryModel>>(
+      deliveryStreamProvider(widget.deliveryId),
+      (prev, next) {
+        final prevStatus = prev?.valueOrNull?.status;
+        final nextStatus = next.valueOrNull?.status;
+        if (prevStatus != null &&
+            nextStatus != null &&
+            prevStatus != nextStatus) {
+          _onStatusChanged(prevStatus, nextStatus);
+        }
+      },
+    );
 
     return deliveryAsync.when(
       loading: () => Scaffold(
@@ -215,6 +272,20 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
         // Carrega rota se ainda não carregou
         if (_routePoints.isEmpty) {
           _loadRoute(delivery);
+        }
+
+        // Mostra avaliação quando entrega for concluída (uma vez)
+        if (delivery.status == DeliveryStatus.completed &&
+            delivery.motoboyId != null &&
+            !_hasShownRating) {
+          _hasShownRating = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) async {
+            if (!mounted) return;
+            final alreadyRated = await RatingRepository().hasRated(delivery.id);
+            if (!mounted || alreadyRated) return;
+            if (!context.mounted) return;
+            await RatingBottomSheet.show(context, ref, delivery); // ignore: use_build_context_synchronously
+          });
         }
 
         // Usa posição do motoboy do modelo se o realtime ainda não atualizou
@@ -335,8 +406,8 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                           ),
                                         ],
                                       ),
-                                      child: const Icon(
-                                        Icons.two_wheeler_rounded,
+                                      child: Icon(
+                                        delivery.vehicleCategory.info.icon,
                                         color: AppColors.primary,
                                         size: 22,
                                       ),
@@ -467,8 +538,8 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                     color: AppColors.primary.withValues(alpha: 0.3),
                                   ),
                                 ),
-                                child: const Icon(
-                                  Icons.two_wheeler_rounded,
+                                child: Icon(
+                                  delivery.vehicleCategory.info.icon,
                                   color: AppColors.primary,
                                   size: 24,
                                 ),
@@ -500,6 +571,23 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                             ),
                                           ),
                                         ],
+                                        if (delivery.motoboyAvgRating != null &&
+                                            (delivery.motoboyTotalRatings ?? 0) > 0) ...[
+                                          const SizedBox(width: AppSpacing.sm),
+                                          const Icon(
+                                            Icons.star_rounded,
+                                            size: 12,
+                                            color: Color(0xFFFFC107),
+                                          ),
+                                          const SizedBox(width: 2),
+                                          Text(
+                                            delivery.motoboyAvgRating!.toStringAsFixed(1),
+                                            style: AppTypography.labelSmall.copyWith(
+                                              color: AppColors.textSecondary,
+                                              fontSize: 11,
+                                            ),
+                                          ),
+                                        ],
                                       ],
                                     ),
                                   ],
@@ -518,6 +606,15 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                           Row(
                             children: [
                               Text('Valor', style: AppTypography.bodyMedium),
+                              if (delivery.distanceKm != null) ...[
+                                const SizedBox(width: AppSpacing.sm),
+                                Text(
+                                  '${delivery.distanceKm!.toStringAsFixed(1)} km',
+                                  style: AppTypography.labelSmall.copyWith(
+                                    color: AppColors.textTertiary,
+                                  ),
+                                ),
+                              ],
                               const Spacer(),
                               Text(
                                 CurrencyFormatter.format(delivery.value),

@@ -1,10 +1,10 @@
-import 'dart:math';
-
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
-/// Resultado de rota contendo pontos, distância e duração
+// ── Modelo de resultado de rota ────────────────────────────────
+
 class RouteResult {
   final List<LatLng> points;
   final double distanceKm;
@@ -22,93 +22,93 @@ class RouteResult {
     if (mins < 60) return '$mins min';
     final hours = mins ~/ 60;
     final remainMins = mins % 60;
-    if (remainMins == 0) return '${hours}h';
-    return '${hours}h ${remainMins}min';
+    return remainMins == 0 ? '${hours}h' : '${hours}h ${remainMins}min';
   }
 
   String get formattedDistance {
-    if (distanceKm < 1) {
-      return '${(distanceKm * 1000).round()} m';
-    }
+    if (distanceKm < 1) return '${(distanceKm * 1000).round()} m';
     return '${distanceKm.toStringAsFixed(1)} km';
   }
 }
 
-class RouteService {
-  final Dio _dio = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 8),
-    receiveTimeout: const Duration(seconds: 10),
-  ));
+// ── Serviço de rota com API externa OSRM ────────────────────────
+//
+// O Google Maps segue sendo usado "por trás" na navegação real via URL/WebView.
+// Aqui o app traça a rota para o mapa interno e usa uma estimativa local como fallback.
 
-  /// Retorna a Rota Real desenhada no mapa e os dados calculados de Distância/Tempo.
+class RouteService {
+  final Dio _dio = Dio();
+
+  /// Retorna a rota real da API OSRM, ou estimativa local se falhar.
   Future<RouteResult> getRouteWithInfo(LatLng from, LatLng to) async {
     try {
+      final url = 'https://router.project-osrm.org/route/v1/driving/'
+          '${from.longitude},${from.latitude};'
+          '${to.longitude},${to.latitude}?geometries=geojson&overview=full';
+
       final response = await _dio.get(
-        'http://router.project-osrm.org/route/v1/driving/${from.longitude},${from.latitude};${to.longitude},${to.latitude}',
-        queryParameters: {
-          'overview': 'full',
-          'geometries': 'geojson',
-        },
+        url,
+        options: Options(
+          receiveTimeout: const Duration(seconds: 5),
+          sendTimeout: const Duration(seconds: 5),
+        ),
       );
 
-      final routes = response.data['routes'] as List?;
-      if (routes != null && routes.isNotEmpty) {
-        final route = routes.first;
-        
-        // 1. Pega os pontos para desenhar o traçado sinuoso exato da rua
-        final coords = route['geometry']?['coordinates'] as List?;
-        List<LatLng> points = [];
-        if (coords != null) {
-          points = coords.map((c) => LatLng((c[1] as num).toDouble(), (c[0] as num).toDouble())).toList();
+      if (response.statusCode == 200) {
+        final data = response.data;
+        if (data['code'] == 'Ok' && data['routes'] != null && data['routes'].isNotEmpty) {
+          final route = data['routes'][0];
+          
+          final distanceMeters = (route['distance'] as num).toDouble();
+          final durationSecs = (route['duration'] as num).toInt();
+          
+          final geometry = route['geometry'];
+          final coordinates = geometry['coordinates'] as List<dynamic>;
+          
+          final points = coordinates.map((coord) {
+            final lng = (coord[0] as num).toDouble();
+            final lat = (coord[1] as num).toDouble();
+            return LatLng(lat, lng);
+          }).toList();
+
+          debugPrint('[RouteService] Rota do OSRM carregada com sucesso: ${(distanceMeters / 1000).toStringAsFixed(2)} km');
+
+          return RouteResult(
+            points: points,
+            distanceKm: distanceMeters / 1000.0,
+            durationSeconds: durationSecs,
+          );
         }
-
-        // 2. Extrai a distância que a API encontrou
-        final apiDistanceKm = ((route['distance'] as num?) ?? 0).toDouble() / 1000;
-        final apiDurationSecs = ((route['duration'] as num?) ?? 0).round();
-
-        // 3. Trava de Proteção Contra Prejuízo (Profit Protection)
-        // Se a API retornar uma distância absurdamente curta por desatualização, 
-        // nós assumimos um mínimo seguro baseado na linha reta (+ 30% de margem urbana).
-        final straightKm = _haversineKm(from, to);
-        final safeMinimumKm = straightKm * 1.30;
-        
-        final finalDistanceKm = max(apiDistanceKm, safeMinimumKm);
-        
-        final finalDurationSecs = apiDurationSecs > 0 
-            ? apiDurationSecs 
-            // 40km/h media de moto na área metropolitana pra recalcular o safeTime
-            : (finalDistanceKm / 40.0 * 3600).round();
-
-        // Volta com os pontos para a linha azul perfeira da curva e o Valor Protegido.
-        return RouteResult(
-          points: points.isNotEmpty ? points : [from, to],
-          distanceKm: finalDistanceKm,
-          durationSeconds: finalDurationSecs,
-        );
       }
     } catch (e) {
-      debugPrint('[RouteService] OSRM public API fetch error: $e');
+      debugPrint('[RouteService] Erro no OSRM: $e - caindo para estimativa local');
     }
 
-    // Fallback absoluto: desenha linha reta pontilhada / sem polylines
-    return _fallback(from, to);
+    return _estimateRoute(from, to);
   }
 
-  /// Mantém compatibilidade — retorna só os pontos
+  /// Wrapper que retorna apenas os pontos (compatibilidade com código existente).
   Future<List<LatLng>> getRoute(LatLng from, LatLng to) async {
     final result = await getRouteWithInfo(from, to);
     return result.points;
   }
 
-  RouteResult _fallback(LatLng from, LatLng to) {
-    final straightDist = _haversineKm(from, to);
-    final estimatedRealDistance = straightDist * 1.4; 
-    final duration = (estimatedRealDistance / 35.0 * 3600).round(); 
+  RouteResult _estimateRoute(LatLng from, LatLng to) {
+    final straightKm = _haversineKm(from, to);
+    // Mantém uma margem conservadora para percurso urbano real.
+    final estimatedKm = straightKm * 1.4;
+    // Velocidade média urbana de moto.
+    final durationSecs = (estimatedKm / 35.0 * 3600).round();
+
+    debugPrint(
+      '[RouteService] Usando estimativa local: '
+      '${estimatedKm.toStringAsFixed(2)} km',
+    );
 
     return RouteResult(
       points: [from, to],
-      distanceKm: estimatedRealDistance,
-      durationSeconds: duration,
+      distanceKm: estimatedKm,
+      durationSeconds: durationSecs,
     );
   }
 
@@ -117,3 +117,7 @@ class RouteService {
     return distance.as(LengthUnit.Kilometer, a, b);
   }
 }
+
+// ── Provider ───────────────────────────────────────────────────
+
+final routeServiceProvider = Provider<RouteService>((ref) => RouteService());

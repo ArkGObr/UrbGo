@@ -3,15 +3,12 @@ import '../../auth/domain/auth_provider.dart';
 import '../data/delivery_repository.dart';
 import 'delivery_model.dart';
 import '../../../core/services/geocoding_service.dart';
-import '../../../core/services/route_service.dart';
 
 final deliveryRepositoryProvider =
     Provider<DeliveryRepository>((ref) => DeliveryRepository());
 
 final geocodingServiceProvider =
     Provider<GeocodingService>((ref) => GeocodingService());
-
-final routeServiceProvider = Provider<RouteService>((ref) => RouteService());
 
 /// Lista de entregas do cliente (todas)
 final clientDeliveriesProvider =

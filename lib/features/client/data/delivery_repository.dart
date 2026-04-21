@@ -6,7 +6,7 @@ class DeliveryRepository {
   final SupabaseClient _db = Supabase.instance.client;
 
   static const _selectWithMotoboy =
-      '*, motoboys(vehicle_plate, current_lat, current_lng, users(name, phone))';
+      '*, motoboys(vehicle_plate, current_lat, current_lng, avg_rating, total_ratings, users(name, phone))';
 
   /// Criar entrega
   Future<DeliveryModel> createDelivery({
@@ -19,6 +19,7 @@ class DeliveryRepository {
     required double deliveryLng,
     required double value,
     required String paymentMethod,
+    required double distanceKm,
     VehicleCategory vehicleCategory = VehicleCategory.motoboy,
   }) async {
     final commission = value * 0.25;
@@ -37,6 +38,7 @@ class DeliveryRepository {
           'payment_method': paymentMethod,
           'vehicle_category': vehicleCategory.info.id,
           'status': 'pending',
+          'distance_km': double.parse(distanceKm.toStringAsFixed(2)),
         })
         .select(_selectWithMotoboy)
         .single();
