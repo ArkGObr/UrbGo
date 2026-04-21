@@ -61,7 +61,7 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
     _actionSub = ref.read(notificationServiceProvider).onAction.listen((actionId) {
       if (!mounted) return;
       if (actionId == 'confirm_pickup' && _delivery != null) {
-        _processPickupConfirmation(_delivery!.id);
+        _processPickupConfirmation(_delivery!.id, fromNotification: true);
       } else if (actionId == 'complete_delivery' && _delivery != null) {
         _processDeliveryCompletion(_delivery!);
       }
@@ -340,7 +340,7 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
     await _processPickupConfirmation(deliveryId);
   }
 
-  Future<void> _processPickupConfirmation(String deliveryId) async {
+  Future<void> _processPickupConfirmation(String deliveryId, {bool fromNotification = false}) async {
     setState(() => _isProcessing = true);
     try {
       await ref.read(motoboyRepositoryProvider).confirmPickup(deliveryId);
@@ -354,8 +354,8 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
         );
       }
       
-      // Quando confirmado (seja pela notificação ou pelo dialog), tenta atualizar suavemente a rota no Maps
-      if (mounted) {
+      // Quando confirmado PELA NOTIFICAÇÃO, leva ao Maps automaticamente
+      if (fromNotification && mounted) {
         await Future.delayed(const Duration(milliseconds: 300));
         _openGoogleNavigation();
       }
@@ -478,10 +478,16 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text('Comissão', style: AppTypography.bodySmall),
-                      Text(
-                        'Descontado da carteira: ${CurrencyFormatter.format(commission)}',
-                        style: AppTypography.bodySmall.copyWith(
-                          color: AppColors.error,
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: Text(
+                          'Descontado: ${CurrencyFormatter.format(commission)}',
+                          textAlign: TextAlign.right,
+                          style: AppTypography.bodySmall.copyWith(
+                            color: AppColors.error,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
@@ -493,9 +499,15 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text('Você deve receber', style: AppTypography.labelLarge),
-                      Text(
-                        CurrencyFormatter.format(earnings),
-                        style: AppTypography.numericLarge,
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: Text(
+                          CurrencyFormatter.format(earnings),
+                          textAlign: TextAlign.right,
+                          style: AppTypography.numericLarge,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ],
                   ),
