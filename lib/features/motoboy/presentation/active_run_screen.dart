@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,12 +7,14 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/constants/vehicle_categories.dart';
 import '../../../core/services/logger_service.dart';
+import '../../../core/services/notification_service.dart';
 import '../../../core/services/route_service.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/widgets/app_toast.dart';
@@ -38,10 +41,16 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
   final RouteService _routeService = RouteService();
   StreamSubscription<Position>? _positionStream;
   StreamSubscription<ServiceStatus>? _gpsStatusSub;
-  bool _isProcessing = false;
+  
   DeliveryModel? _delivery;
   bool _isLoading = true;
+  bool _isProcessing = false;
   List<LatLng> _routePoints = [];
+
+  // Variáveis para cache da API de Rotas (OSRM) 
+  DateTime? _lastOsrmFetch;
+  RouteResult? _lastRouteResult;
+  StreamSubscription<String>? _actionSub;
 
   @override
   void initState() {
@@ -49,6 +58,14 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
     _startPositionStream();
     _startGpsMonitor();
     _loadDelivery();
+    _actionSub = ref.read(notificationServiceProvider).onAction.listen((actionId) {
+      if (!mounted) return;
+      if (actionId == 'confirm_pickup' && _delivery != null) {
+        _processPickupConfirmation(_delivery!.id);
+      } else if (actionId == 'complete_delivery' && _delivery != null) {
+        _processDeliveryCompletion(_delivery!);
+      }
+    });
   }
 
   void _startGpsMonitor() {
@@ -106,6 +123,12 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
         _isLoading = false;
       });
 
+      // Atualiza a notificação de andamento imediatamente (para não depender apenas do movimento do GPS)
+      final currentPos = ref.read(_myPositionProvider);
+      if (currentPos != null) {
+        _updateNotificationStatus(currentPos);
+      }
+
       // Carrega a rota real após ter as coordenadas
       final pickup = LatLng(delivery.pickupLat, delivery.pickupLng);
       final dest = LatLng(delivery.deliveryLat, delivery.deliveryLng);
@@ -157,12 +180,78 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
           locationSettings: const LocationSettings(
             accuracy: LocationAccuracy.high,
             distanceFilter: 2, // Frequência maior para navegação fluida
+            // Para rastreamento em segundo plano robusto seria necessário um serviço de foreground.
+            // Aqui estamos mantendo o GPS no foreground enquanto o App estiver ativo.
           ),
         ).listen((pos) {
           if (!mounted) return;
           final latLng = LatLng(pos.latitude, pos.longitude);
           ref.read(_myPositionProvider.notifier).state = latLng;
+          _updateNotificationStatus(latLng);
         });
+  }
+
+  void _updateNotificationStatus(LatLng currentPos) {
+    if (_delivery == null) return;
+    
+    final bool goingToPickup = _delivery!.status == DeliveryStatus.accepted;
+    final dest = goingToPickup
+        ? LatLng(_delivery!.pickupLat, _delivery!.pickupLng)
+        : LatLng(_delivery!.deliveryLat, _delivery!.deliveryLng);
+        
+    final now = DateTime.now();
+    // Busca na API de Rotas a cada 20 segundos para não estourar limite
+    if (_lastOsrmFetch == null || now.difference(_lastOsrmFetch!).inSeconds > 20) {
+      _lastOsrmFetch = now;
+      _routeService.getRouteWithInfo(currentPos, dest).then((routeResult) {
+        if (!mounted) return;
+        _lastRouteResult = routeResult;
+        // Atualiza a notificação imediatamente após chegada do OSRM
+        _dispatchNotification(currentPos, goingToPickup, dest);
+      }).catchError((_) {});
+    } else {
+      // Usa o cache enquanto a API não refaz a busca
+      _dispatchNotification(currentPos, goingToPickup, dest);
+    }
+  }
+
+  void _dispatchNotification(LatLng currentPos, bool goingToPickup, LatLng dest) {
+    if (_delivery == null) return;
+
+    double displayKm;
+    int minutes;
+
+    if (_lastRouteResult != null) {
+      // Usa os dados precisos em tempo real da API de roteamento
+      displayKm = _lastRouteResult!.distanceKm;
+      // Ajusta ligeiramente a distância real no intervalo dos 20 segundos 
+      // subtraindo o que ele caminhou em linha reta desde que o cache rodou.
+      // (Para simplificar, apenas usamos o distanceKm mais recente do cache, que atualiza a cada 20s)
+      minutes = (_lastRouteResult!.durationSeconds / 60).round();
+    } else {
+      // Fallback: Estimativa em linha reta local
+      final distanceMeters = const Distance().as(LengthUnit.Meter, currentPos, dest);
+      displayKm = (distanceMeters / 1000) * 1.4; 
+      minutes = ((displayKm / 35.0) * 60).round();
+    }
+    
+    // Evita valores zerados bizarros
+    if (minutes < 1) minutes = 1;
+    if (displayKm < 0.1) displayKm = 0.1;
+
+    final formattedKm = displayKm.toStringAsFixed(1);
+    final title = goingToPickup ? 'Indo para o Local de Coleta' : 'A Caminho da Entrega';
+    final destinationLabel = goingToPickup ? _delivery!.pickupAddress : _delivery!.deliveryAddress;
+    final body = '$formattedKm km restantes • ~ $minutes min\nDestino: $destinationLabel';
+    
+    try {
+      ref.read(notificationServiceProvider).showOngoingRunNotification(
+        title: title,
+        body: body,
+        goingToPickup: goingToPickup,
+        deliveryId: _delivery!.id,
+      );
+    } catch (_) {}
   }
 
   Future<void> _openGoogleNavigation() async {
@@ -173,34 +262,41 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
     final destination = goingToPickup
         ? LatLng(delivery.pickupLat, delivery.pickupLng)
         : LatLng(delivery.deliveryLat, delivery.deliveryLng);
-    final destinationLabel = goingToPickup
-        ? delivery.pickupAddress
-        : delivery.deliveryAddress;
 
-    final origin =
-        ref.read(_myPositionProvider) ??
-        LatLng(delivery.pickupLat, delivery.pickupLng);
-
-    if (!mounted) return;
-
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => NavigationScreen(
-          originLat: origin.latitude,
-          originLng: origin.longitude,
-          destLat: destination.latitude,
-          destLng: destination.longitude,
-          destLabel: destinationLabel,
-        ),
-      ),
-    );
+    try {
+      if (Platform.isAndroid) {
+        // Usa Intent nativo de navegação do Google Maps no modo Direção
+        final uri = Uri.parse('google.navigation:q=${destination.latitude},${destination.longitude}&mode=d');
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri);
+          return;
+        }
+      }
+      
+      // Fallback para web URL, forçando a abertura no app externo se disponível
+      final fallbackUri = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=${destination.latitude},${destination.longitude}&travelmode=driving');
+      await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (mounted) {
+        AppToast.show(
+          context,
+          title: 'Erro ao abrir mapa',
+          subtitle: 'Não foi possível iniciar a navegação externa.',
+          type: AppToastType.error,
+        );
+      }
+    }
   }
 
   @override
   void dispose() {
     _positionStream?.cancel();
     _gpsStatusSub?.cancel();
+    _actionSub?.cancel();
     _mapController.dispose();
+    try {
+      ref.read(notificationServiceProvider).cancelOngoingRunNotification();
+    } catch (_) {}
     super.dispose();
   }
 
@@ -241,6 +337,10 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
     );
 
     if (confirmed != true) return;
+    await _processPickupConfirmation(deliveryId);
+  }
+
+  Future<void> _processPickupConfirmation(String deliveryId) async {
     setState(() => _isProcessing = true);
     try {
       await ref.read(motoboyRepositoryProvider).confirmPickup(deliveryId);
@@ -252,6 +352,12 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
           subtitle: 'Agora siga para o ponto de entrega',
           type: AppToastType.success,
         );
+      }
+      
+      // Quando confirmado (seja pela notificação ou pelo dialog), tenta atualizar suavemente a rota no Maps
+      if (mounted) {
+        await Future.delayed(const Duration(milliseconds: 300));
+        _openGoogleNavigation();
       }
     } catch (e) {
       if (mounted) {
@@ -304,6 +410,10 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
     );
 
     if (confirmed != true) return;
+    await _processDeliveryCompletion(delivery);
+  }
+
+  Future<void> _processDeliveryCompletion(DeliveryModel delivery) async {
     setState(() => _isProcessing = true);
     try {
       await ref.read(motoboyRepositoryProvider).completeDelivery(delivery.id);

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -46,9 +47,8 @@ class NotificationService {
       sound: true,
     );
 
-    // 2. Inicializar notificações locais
     const androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+        AndroidInitializationSettings('ic_notification');
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: false, // pedido feito pelo FCM acima
       requestBadgePermission: false,
@@ -127,8 +127,9 @@ class NotificationService {
           _kAndroidChannel.id,
           _kAndroidChannel.name,
           channelDescription: _kAndroidChannel.description,
-          icon: '@mipmap/ic_launcher',
+          icon: 'ic_notification',
           color: const Color(0xFF99eb09),
+          largeIcon: const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'),
           importance: Importance.high,
           priority: Priority.high,
         ),
@@ -138,8 +139,65 @@ class NotificationService {
     );
   }
 
+  // ── Ações Customizadas das Notificações ───────────────────────
+  final _actionStreamController = StreamController<String>.broadcast();
+  Stream<String> get onAction => _actionStreamController.stream;
+
+  // ── Atualização Contínua em Tempo Real ────────────────────────
+
+  Future<void> showOngoingRunNotification({
+    required String title,
+    required String body,
+    required bool goingToPickup,
+    required String deliveryId,
+  }) async {
+    await _local.show(
+      9999, // ID fixo para a notificação da corrida
+      title,
+      body,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          'ongoing_run_channel',
+          'Corrida em andamento',
+          channelDescription: 'Acompanhamento em tempo real da rota',
+          icon: 'ic_notification',
+          color: const Color(0xFF99eb09),
+          largeIcon: const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'),
+          importance: Importance.low, // Sem som a cada atualização
+          priority: Priority.low,
+          ongoing: true, // Não pode ser descartada
+          showWhen: false,
+          actions: [
+            if (goingToPickup)
+              const AndroidNotificationAction(
+                'confirm_pickup',
+                'Confirmar Coleta',
+                showsUserInterface: true,
+              )
+            else
+              const AndroidNotificationAction(
+                'complete_delivery',
+                'Finalizar Entrega',
+                showsUserInterface: true,
+              ),
+          ],
+        ),
+        iOS: const DarwinNotificationDetails(),
+      ),
+      payload: deliveryId,
+    );
+  }
+
+  Future<void> cancelOngoingRunNotification() async {
+    await _local.cancel(9999);
+  }
+
   void _onLocalTap(NotificationResponse response) {
-    _navigate(response.payload, response.payload);
+    if (response.actionId != null) {
+      _actionStreamController.add(response.actionId!);
+    } else {
+      _navigate(response.payload, response.payload);
+    }
   }
 
   void _handleRemoteNavigation(RemoteMessage message) {
