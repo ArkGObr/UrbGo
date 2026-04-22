@@ -69,15 +69,7 @@ class MotoboyRepository {
         .order('created_at', ascending: false)
         .limit(50);
 
-    // Se não encontrou pela categoria, tenta sem filtro de categoria
-    if ((data as List).isEmpty) {
-      data = await _db
-          .from('deliveries')
-          .select()
-          .eq('status', 'pending')
-          .order('created_at', ascending: false)
-          .limit(50);
-    }
+    // Removido o fallback para forçar que o entregador veja APENAS as corridas da sua categoria.
 
     final all =
         (data as List).map((e) => DeliveryModel.fromJson(e)).toList();

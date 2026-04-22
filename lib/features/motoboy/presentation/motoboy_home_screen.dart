@@ -45,6 +45,8 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
   StreamSubscription<Position>? _positionSub;
+  RealtimeChannel? _runsChannel;
+  bool _isShowingModal = false;
 
   @override
   void initState() {
@@ -85,6 +87,7 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
   void dispose() {
     _pulseController.dispose();
     _positionSub?.cancel();
+    _runsChannel?.unsubscribe();
     super.dispose();
   }
 
@@ -165,6 +168,19 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
         }
         await repo.setOnline(user.id, true);
         repo.startLocationUpdates(user.id);
+        
+        _runsChannel ??= repo.watchAvailableRuns(() async {
+          if (!mounted) return;
+          // Invalida e força atualização do provider
+          ref.invalidate(availableRunsProvider);
+          try {
+            final runs = await ref.read(availableRunsProvider.future);
+            if (runs.isNotEmpty && mounted && !_isShowingModal) {
+              _showScandalousNewRunModal(runs.first.value);
+            }
+          } catch (_) {}
+        });
+
         await _initPosition();
         if (mounted) {
           AppToast.show(
@@ -176,6 +192,8 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
         }
       } else {
         repo.stopLocationUpdates();
+        _runsChannel?.unsubscribe();
+        _runsChannel = null;
         await repo.setOnline(user.id, false);
         if (mounted) {
           AppToast.show(
@@ -204,6 +222,88 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
     if (_currentPosition != null) {
       _mapController.move(_currentPosition!, 15);
     }
+  }
+
+  void _showScandalousNewRunModal(double value) {
+    if (!mounted) return;
+    setState(() => _isShowingModal = true);
+    // Beep ou vibração pode ser disparado aqui via packages, mas o visual já é escandaloso
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierLabel: 'Nova Corrida',
+      transitionDuration: const Duration(milliseconds: 400),
+      pageBuilder: (ctx, a1, a2) => Container(),
+      transitionBuilder: (ctx, a1, a2, child) {
+        return Transform.scale(
+          scale: Curves.elasticOut.transform(a1.value),
+          child: Opacity(
+            opacity: a1.value,
+            child: AlertDialog(
+              backgroundColor: AppColors.primaryDeep,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppRadius.xl),
+                side: const BorderSide(color: AppColors.primary, width: 4),
+              ),
+              contentPadding: const EdgeInsets.all(AppSpacing.xl2),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.monetization_on_rounded, size: 80, color: AppColors.primary),
+                  const SizedBox(height: AppSpacing.md),
+                  Text(
+                    'NOVA CORRIDA!!!',
+                    style: AppTypography.h1.copyWith(
+                      color: AppColors.primary,
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                      shadows: [
+                        Shadow(color: Colors.black.withOpacity(0.5), blurRadius: 10, offset: const Offset(0, 4)),
+                      ],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  Text(
+                    'Você pode faturar agora:\n${CurrencyFormatter.format(value)}',
+                    style: AppTypography.h2.copyWith(color: AppColors.textPrimary),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: AppSpacing.xl2),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.full)),
+                      ),
+                      onPressed: () {
+                        setState(() => _isShowingModal = false);
+                        Navigator.pop(ctx);
+                        context.push('/motoboy/runs');
+                      },
+                      child: Text(
+                        'ACEITAR AGORA',
+                        style: AppTypography.labelLarge.copyWith(color: AppColors.background, fontSize: 18),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  TextButton(
+                    onPressed: () {
+                      setState(() => _isShowingModal = false);
+                      Navigator.pop(ctx);
+                    },
+                    child: Text('Ignorar', style: AppTypography.labelLarge.copyWith(color: AppColors.textSecondary)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override

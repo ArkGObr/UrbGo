@@ -45,7 +45,7 @@ final availableRunsProvider =
         motoboyId: user.id,
         lat: pos.latitude,
         lng: pos.longitude,
-        radiusKm: 10.0, // Limite exato de 10km
+        radiusKm: 50.0, // Aumentado para 50km para garantir que encontre num raio maior
       );
 });
 
