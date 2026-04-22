@@ -1,11 +1,12 @@
 import 'dart:async';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-// Canal Android de alta importância
+// Canal principal — corridas, status, saldo
 const _kAndroidChannel = AndroidNotificationChannel(
   'urbgo_channel',
   'UrbGo',
@@ -14,11 +15,60 @@ const _kAndroidChannel = AndroidNotificationChannel(
   playSound: true,
 );
 
-/// Handler de background — deve ser top-level (fora de qualquer classe)
+// Canal para notificações de re-engajamento (inatividade)
+const _kReengagementChannel = AndroidNotificationChannel(
+  'urbgo_reengagement',
+  'UrbGo — Lembretes',
+  description: 'Lembretes para voltar a fazer entregas',
+  importance: Importance.defaultImportance,
+  playSound: true,
+);
+
+/// Handler de background — top-level obrigatório; roda em isolate separado.
+/// Cuida apenas de mensagens data-only (sem campo `notification`).
+/// Mensagens com `notification` já são exibidas automaticamente pelo SO.
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // Firebase já está inicializado no main.dart antes deste handler ser registrado
-  debugPrint('[FCM Background] ${message.messageId}');
+  // Mensagens com payload de notification → SO já exibe automaticamente.
+  if (message.notification != null) return;
+
+  // Data-only: precisamos exibir manualmente.
+  await Firebase.initializeApp();
+
+  final local = FlutterLocalNotificationsPlugin();
+  await local.initialize(
+    const InitializationSettings(
+      android: AndroidInitializationSettings('ic_notification'),
+      iOS: DarwinInitializationSettings(),
+    ),
+  );
+  await local
+      .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(_kAndroidChannel);
+
+  final title = message.data['title'] as String? ?? 'UrbGo';
+  final body  = message.data['body']  as String? ?? '';
+  if (title.isEmpty) return;
+
+  await local.show(
+    message.hashCode,
+    title,
+    body,
+    NotificationDetails(
+      android: AndroidNotificationDetails(
+        _kAndroidChannel.id,
+        _kAndroidChannel.name,
+        channelDescription: _kAndroidChannel.description,
+        icon: 'ic_notification',
+        color: const Color(0xFF99eb09),
+        importance: Importance.high,
+        priority: Priority.high,
+      ),
+      iOS: const DarwinNotificationDetails(presentSound: true),
+    ),
+    payload: message.data['deliveryId'],
+  );
 }
 
 class NotificationService {
@@ -40,65 +90,69 @@ class NotificationService {
   }
 
   Future<void> initialize() async {
-    // 1. Solicitar permissão
-    await _fcm.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
+    // 1. Solicitar permissão (iOS + Android 13+)
+    await _fcm.requestPermission(alert: true, badge: true, sound: true);
 
-    const androidSettings =
-        AndroidInitializationSettings('ic_notification');
-    const iosSettings = DarwinInitializationSettings(
-      requestAlertPermission: false, // pedido feito pelo FCM acima
-      requestBadgePermission: false,
-      requestSoundPermission: false,
-    );
+    // 2. Inicializar flutter_local_notifications
     await _local.initialize(
       const InitializationSettings(
-        android: androidSettings,
-        iOS: iosSettings,
+        android: AndroidInitializationSettings('ic_notification'),
+        iOS: DarwinInitializationSettings(
+          requestAlertPermission: false,
+          requestBadgePermission: false,
+          requestSoundPermission: false,
+        ),
       ),
       onDidReceiveNotificationResponse: _onLocalTap,
     );
 
-    // 3. Criar canal Android
-    await _local
+    // 3. Criar canais Android
+    final androidPlugin = _local
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(_kAndroidChannel);
+            AndroidFlutterLocalNotificationsPlugin>();
+    await androidPlugin?.createNotificationChannel(_kAndroidChannel);
+    await androidPlugin?.createNotificationChannel(_kReengagementChannel);
+    await androidPlugin?.createNotificationChannel(
+      const AndroidNotificationChannel(
+        'ongoing_run_channel',
+        'Corrida em andamento',
+        description: 'Acompanhamento em tempo real da rota',
+        importance: Importance.low,
+      ),
+    );
 
-    // 4. Exibir notificação local enquanto app está aberto (foreground)
+    // 4. Foreground: exibir notificação local
     FirebaseMessaging.onMessage.listen(_showLocal);
 
-    // 5. Navegar quando usuário toca na notificação com app em background
+    // 5. Background → foreground: navegar ao tocar
     FirebaseMessaging.onMessageOpenedApp.listen(_handleRemoteNavigation);
 
-    // 6. Verificar notificação que abriu o app do estado terminated
+    // 6. App estava terminado e foi aberto pela notificação
     final initial = await _fcm.getInitialMessage();
     if (initial != null) _handleRemoteNavigation(initial);
   }
 
-  /// Salva o FCM token do usuário no banco
+  /// Salva o FCM token do usuário no banco e registra listener de renovação
   Future<void> saveToken(String userId) async {
     try {
       final token = await _fcm.getToken();
       if (token == null) return;
+      await _persistToken(userId, token);
 
+      // Renovação automática de token pelo Firebase
+      _fcm.onTokenRefresh.listen((newToken) => _persistToken(userId, newToken));
+    } catch (e) {
+      debugPrint('[FCM] Erro ao salvar token: $e');
+    }
+  }
+
+  Future<void> _persistToken(String userId, String token) async {
+    try {
       await Supabase.instance.client
           .from('users')
           .update({'fcm_token': token}).eq('id', userId);
-
-      // Atualizar quando token for renovado pelo Firebase
-      _fcm.onTokenRefresh.listen((newToken) async {
-        try {
-          await Supabase.instance.client
-              .from('users')
-              .update({'fcm_token': newToken}).eq('id', userId);
-        } catch (_) {}
-      });
     } catch (e) {
-      debugPrint('[FCM] Erro ao salvar token: $e');
+      debugPrint('[FCM] Erro ao persistir token: $e');
     }
   }
 

@@ -31,11 +31,13 @@ class MotoboyRepository {
         .map((rows) => MotoboyModel.fromJson(rows.first));
   }
 
-  /// Ligar/desligar online
+  /// Ligar/desligar online (ao ligar, registra last_active_at e reseta nível de inatividade via trigger SQL)
   Future<void> setOnline(String id, bool online) async {
+    final now = DateTime.now().toIso8601String();
     await _db.from('motoboys').update({
       'is_online': online,
-      'updated_at': DateTime.now().toIso8601String(),
+      'updated_at': now,
+      if (online) 'last_active_at': now,
     }).eq('id', id);
   }
 
