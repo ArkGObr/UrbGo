@@ -42,10 +42,10 @@ BEGIN
   IF p_token IS NULL OR p_token = '' THEN RETURN; END IF;
 
   PERFORM net.http_post(
-    url     := current_setting('app.supabase_url') || '/functions/v1/send-push',
+    url     := 'https://lpapiwkfqghdfkekwjnt.supabase.co/functions/v1/send-push',
     headers := jsonb_build_object(
       'Content-Type',  'application/json',
-      'Authorization', 'Bearer ' || current_setting('app.service_role_key')
+      'Authorization', 'Bearer <SERVICE_ROLE_KEY>'
     ),
     body    := jsonb_build_object(
       'token', p_token,
