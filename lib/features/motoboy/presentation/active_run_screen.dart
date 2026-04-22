@@ -373,6 +373,61 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
     }
   }
 
+  Future<void> _abandonDelivery(String deliveryId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+        ),
+        title: Text('Desistir da Corrida?', style: AppTypography.h3),
+        content: Text(
+          'A corrida voltará para o pool de disponíveis. Isso pode afetar sua reputação.',
+          style: AppTypography.bodyMedium,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'Cancelar',
+              style: AppTypography.labelLarge.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'Desistir',
+              style: AppTypography.labelLarge.copyWith(
+                color: AppColors.error,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    setState(() => _isProcessing = true);
+    try {
+      await ref.read(motoboyRepositoryProvider).abandonDelivery(deliveryId);
+      ref.invalidate(availableRunsProvider);
+      if (mounted) context.go('/motoboy/home');
+    } catch (e) {
+      if (mounted) {
+        AppToast.show(
+          context,
+          title: 'Erro ao desistir',
+          subtitle: e.toString(),
+          type: AppToastType.error,
+        );
+        setState(() => _isProcessing = false);
+      }
+    }
+  }
+
   Future<void> _completeDelivery(DeliveryModel delivery) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -910,7 +965,7 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                     const SizedBox(height: AppSpacing.xl2),
 
                     // Botões de ação SEMPRE VISÍVEIS no modo direção
-                    if (delivery.status == DeliveryStatus.accepted)
+                    if (delivery.status == DeliveryStatus.accepted) ...[
                       PrimaryButton(
                         label: '✓ Confirmar Coleta',
                         onPressed: _isProcessing
@@ -918,6 +973,22 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                             : () => _confirmPickup(delivery.id),
                         isLoading: _isProcessing,
                       ),
+                      const SizedBox(height: AppSpacing.sm),
+                      SizedBox(
+                        width: double.infinity,
+                        child: TextButton(
+                          onPressed: _isProcessing
+                              ? null
+                              : () => _abandonDelivery(delivery.id),
+                          child: Text(
+                            'Desistir da Corrida',
+                            style: AppTypography.labelLarge.copyWith(
+                              color: AppColors.error,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                     if (delivery.status == DeliveryStatus.inProgress)
                       PrimaryButton(
                         label: '✓ Finalizar Entrega',

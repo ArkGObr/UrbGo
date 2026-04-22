@@ -8,6 +8,7 @@ import '../features/auth/presentation/login_screen.dart';
 import '../features/auth/presentation/register_screen.dart';
 import '../features/auth/presentation/check_email_screen.dart';
 import '../features/client/presentation/client_home_screen.dart';
+import '../features/client/presentation/client_history_screen.dart';
 import '../features/client/presentation/create_delivery_screen.dart';
 import '../features/client/presentation/tracking_screen.dart';
 import '../features/client/presentation/client_profile_screen.dart';
@@ -138,6 +139,13 @@ final routerProvider = Provider<GoRouter>((ref) {
             pageBuilder: (_, state) => slideUpFadeTransition(
               key: state.pageKey,
               child: const ClientProfileScreen(),
+            ),
+          ),
+          GoRoute(
+            path: '/client/history',
+            pageBuilder: (_, state) => slideUpFadeTransition(
+              key: state.pageKey,
+              child: const ClientHistoryScreen(),
             ),
           ),
         ],

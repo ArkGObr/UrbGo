@@ -205,45 +205,69 @@ class NotificationService {
     required bool goingToPickup,
     required String deliveryId,
   }) async {
-    await _local.show(
-      9999, // ID fixo para a notificação da corrida
-      title,
-      body,
-      NotificationDetails(
-        android: AndroidNotificationDetails(
-          'ongoing_run_channel',
-          'Corrida em andamento',
-          channelDescription: 'Acompanhamento em tempo real da rota',
-          icon: 'ic_notification',
-          color: const Color(0xFF99eb09),
-          largeIcon: const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'),
-          importance: Importance.low, // Sem som a cada atualização
-          priority: Priority.low,
-          ongoing: true, // Não pode ser descartada
-          showWhen: false,
-          actions: [
-            if (goingToPickup)
-              const AndroidNotificationAction(
-                'confirm_pickup',
-                'Confirmar Coleta',
-                showsUserInterface: true,
-              )
-            else
-              const AndroidNotificationAction(
-                'complete_delivery',
-                'Finalizar Entrega',
-                showsUserInterface: true,
-              ),
-          ],
-        ),
-        iOS: const DarwinNotificationDetails(),
-      ),
-      payload: deliveryId,
+    final androidDetails = AndroidNotificationDetails(
+      'ongoing_run_channel',
+      'Corrida em andamento',
+      channelDescription: 'Acompanhamento em tempo real da rota',
+      icon: 'ic_notification',
+      color: const Color(0xFF99eb09),
+      largeIcon: const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'),
+      importance: Importance.low,
+      priority: Priority.low,
+      ongoing: true,
+      showWhen: false,
+      actions: [
+        if (goingToPickup)
+          const AndroidNotificationAction(
+            'confirm_pickup',
+            'Confirmar Coleta',
+            showsUserInterface: true,
+          )
+        else
+          const AndroidNotificationAction(
+            'complete_delivery',
+            'Finalizar Entrega',
+            showsUserInterface: true,
+          ),
+      ],
     );
+
+    // Android: usa Foreground Service para manter GPS ativo em segundo plano
+    final androidPlugin = _local
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+    if (androidPlugin != null) {
+      await androidPlugin.startForegroundService(
+        9999,
+        title,
+        body,
+        notificationDetails: androidDetails,
+        payload: deliveryId,
+        foregroundServiceTypes: {AndroidServiceForegroundType.foregroundServiceTypeLocation},
+      );
+    } else {
+      await _local.show(
+        9999,
+        title,
+        body,
+        NotificationDetails(
+          android: androidDetails,
+          iOS: const DarwinNotificationDetails(),
+        ),
+        payload: deliveryId,
+      );
+    }
   }
 
   Future<void> cancelOngoingRunNotification() async {
-    await _local.cancel(9999);
+    final androidPlugin = _local
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+    if (androidPlugin != null) {
+      await androidPlugin.stopForegroundService();
+    } else {
+      await _local.cancel(9999);
+    }
   }
 
   void _onLocalTap(NotificationResponse response) {

@@ -26,6 +26,16 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>O UrbGo usa sua localização para mostrar sua posição no mapa durante entregas e calcular rotas.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>O UrbGo usa sua localização em segundo plano para atualizar sua posição durante entregas ativas.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

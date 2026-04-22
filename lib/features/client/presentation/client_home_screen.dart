@@ -14,6 +14,7 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/vehicle_categories.dart';
 import '../../../core/services/connectivity_service.dart';
 import '../../auth/domain/auth_provider.dart';
+import '../../auth/domain/user_model.dart';
 import '../../shared/widgets/delivery_card.dart';
 import '../../shared/widgets/category_selector.dart';
 import '../domain/client_providers.dart';
@@ -26,6 +27,7 @@ class ClientHomeScreen extends ConsumerStatefulWidget {
 }
 
 class _ClientHomeScreenState extends ConsumerState<ClientHomeScreen> {
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
   final MapController _mapController = MapController();
   LatLng? _currentPosition;
   bool _isLoadingLocation = true;
@@ -37,26 +39,28 @@ class _ClientHomeScreenState extends ConsumerState<ClientHomeScreen> {
   }
 
   Future<void> _getUserLocation() async {
+    if (mounted) setState(() => _isLoadingLocation = true);
     try {
       LocationPermission perm = await Geolocator.checkPermission();
       if (perm == LocationPermission.denied) {
         perm = await Geolocator.requestPermission();
       }
-      if (perm == LocationPermission.whileInUse || perm == LocationPermission.always) {
-        final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.medium);
+      if (perm == LocationPermission.whileInUse ||
+          perm == LocationPermission.always) {
+        final pos = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.medium);
         if (mounted) {
           setState(() {
             _currentPosition = LatLng(pos.latitude, pos.longitude);
             _isLoadingLocation = false;
           });
-          // Anima / Move o mapa para a localização do usuário
           _mapController.move(_currentPosition!, 15.0);
         }
       } else {
-        setState(() => _isLoadingLocation = false);
+        if (mounted) setState(() => _isLoadingLocation = false);
       }
     } catch (_) {
-      setState(() => _isLoadingLocation = false);
+      if (mounted) setState(() => _isLoadingLocation = false);
     }
   }
 
@@ -73,15 +77,37 @@ class _ClientHomeScreenState extends ConsumerState<ClientHomeScreen> {
       child: AnnotatedRegion<SystemUiOverlayStyle>(
         value: SystemUiOverlayStyle.dark,
         child: Scaffold(
+          key: _scaffoldKey,
           backgroundColor: AppColors.background,
+          drawer: user != null
+              ? _ClientDrawer(
+                  user: user,
+                  onHome: () => Navigator.of(context).pop(),
+                  onHistory: () {
+                    Navigator.of(context).pop();
+                    context.push('/client/history');
+                  },
+                  onProfile: () {
+                    Navigator.of(context).pop();
+                    context.push('/client/profile');
+                  },
+                  onSignOut: () async {
+                    Navigator.of(context).pop();
+                    await ref
+                        .read(authNotifierProvider.notifier)
+                        .signOut();
+                  },
+                )
+              : null,
           body: Stack(
             children: [
-              // 1. MAPA DE FUNDO
+              // ── Mapa de fundo ──────────────────────
               Positioned.fill(
                 child: FlutterMap(
                   mapController: _mapController,
                   options: MapOptions(
-                    initialCenter: _currentPosition ?? const LatLng(-23.5505, -46.6333),
+                    initialCenter:
+                        _currentPosition ?? const LatLng(-23.5505, -46.6333),
                     initialZoom: 15.0,
                   ),
                   children: [
@@ -100,13 +126,14 @@ class _ClientHomeScreenState extends ConsumerState<ClientHomeScreen> {
                               decoration: BoxDecoration(
                                 color: const Color(0xFF2196F3),
                                 shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 3),
+                                border:
+                                    Border.all(color: Colors.white, width: 3),
                                 boxShadow: const [
                                   BoxShadow(
                                     color: Colors.black26,
                                     blurRadius: 6,
                                     offset: Offset(0, 2),
-                                  )
+                                  ),
                                 ],
                               ),
                             ),
@@ -117,15 +144,79 @@ class _ClientHomeScreenState extends ConsumerState<ClientHomeScreen> {
                 ),
               ),
 
-              // 2. HEADER FLUTUANTE
+              // ── Header flutuante ───────────────────
               Positioned(
                 top: MediaQuery.of(context).padding.top + AppSpacing.md,
                 left: AppSpacing.md,
                 right: AppSpacing.md,
-                child: _buildFloatingHeader(user?.name ?? ''),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Botão de menu → abre drawer
+                    _FloatingIconButton(
+                      icon: Icons.menu_rounded,
+                      onPressed: () =>
+                          _scaffoldKey.currentState?.openDrawer(),
+                    ),
+
+                    // Logo central
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.md, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(AppRadius.full),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.1),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Image.asset(
+                            'assets/logo.png',
+                            width: 24,
+                            height: 24,
+                            fit: BoxFit.contain,
+                          ),
+                          const SizedBox(width: AppSpacing.sm),
+                          RichText(
+                            text: TextSpan(
+                              style: AppTypography.h3.copyWith(height: 1.2),
+                              children: const [
+                                TextSpan(
+                                  text: 'Urb',
+                                  style: TextStyle(
+                                      color: AppColors.textPrimary),
+                                ),
+                                TextSpan(
+                                  text: 'Go',
+                                  style:
+                                      TextStyle(color: AppColors.primary),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Botão de localização
+                    _FloatingIconButton(
+                      icon: Icons.my_location_rounded,
+                      iconColor: AppColors.primary,
+                      onPressed:
+                          _isLoadingLocation ? null : _getUserLocation,
+                    ),
+                  ],
+                ),
               ),
 
-              // 3. BARRA INFERIOR DE OPÇÕES (draggable / posicionado)
+              // ── Painel inferior ────────────────────
               Positioned(
                 bottom: 0,
                 left: 0,
@@ -139,116 +230,12 @@ class _ClientHomeScreenState extends ConsumerState<ClientHomeScreen> {
     );
   }
 
-  // HEADER COM LOGO E FOTO
-  Widget _buildFloatingHeader(String userName) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        // Drawer Menu / Perfil
-        Container(
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.1),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: IconButton(
-            icon: const Icon(Icons.menu_rounded, color: AppColors.textPrimary),
-            onPressed: () {
-              // Poderia abrir um Drawer, aqui vou dar logout rápido apenas para funcionalidade base
-              showModalBottomSheet(
-                context: context,
-                backgroundColor: AppColors.surface,
-                builder: (_) => SafeArea(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ListTile(
-                        leading: const Icon(Icons.person_rounded),
-                        title: Text('Olá, ${userName.isNotEmpty ? userName : 'Cliente'}', style: AppTypography.h4),
-                      ),
-                      ListTile(
-                        leading: const Icon(Icons.manage_accounts_rounded),
-                        title: Text('Meu Perfil', style: AppTypography.bodyLarge),
-                        onTap: () {
-                          Navigator.pop(context);
-                          context.push('/client/profile');
-                        },
-                      ),
-                      const Divider(),
-                      ListTile(
-                        leading: const Icon(Icons.logout_rounded, color: AppColors.error),
-                        title: Text('Sair da conta', style: AppTypography.bodyLarge.copyWith(color: AppColors.error)),
-                        onTap: () async {
-                          Navigator.pop(context);
-                          await ref.read(authNotifierProvider.notifier).signOut();
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-        
-        // Center Banner: Logo + App Name
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 8),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(AppRadius.full),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.1),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Image.asset(
-                'assets/logo.png',
-                width: 24,
-                height: 24,
-                fit: BoxFit.contain,
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              RichText(
-                text: TextSpan(
-                  style: AppTypography.h3.copyWith(height: 1.2),
-                  children: [
-                    const TextSpan(text: 'Urb', style: TextStyle(color: AppColors.textPrimary)),
-                    TextSpan(
-                      text: 'Go',
-                      style: TextStyle(color: AppColors.primary),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        // Usado para equilibrar o lado direito no Row (spaceBetween)
-        const SizedBox(width: 48), 
-      ],
-    );
-  }
-
-  // PAINEL INFERIOR COM A BUSCA E CATEGORIAS
   Widget _buildBottomCard(AsyncValue deliveriesAsync) {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.background,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
+        borderRadius:
+            const BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.1),
@@ -274,9 +261,10 @@ class _ClientHomeScreenState extends ConsumerState<ClientHomeScreen> {
             ),
             const SizedBox(height: AppSpacing.lg),
 
-            // Onde vamos? Search Bar
+            // Barra de busca
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
               child: GestureDetector(
                 onTap: () => context.push('/client/create'),
                 child: Container(
@@ -287,7 +275,8 @@ class _ClientHomeScreenState extends ConsumerState<ClientHomeScreen> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.location_on_rounded, color: AppColors.primary, size: 24),
+                      const Icon(Icons.location_on_rounded,
+                          color: AppColors.primary, size: 24),
                       const SizedBox(width: AppSpacing.md),
                       Text(
                         'Para onde vamos?',
@@ -300,66 +289,308 @@ class _ClientHomeScreenState extends ConsumerState<ClientHomeScreen> {
                 ),
               ),
             ),
-
             const SizedBox(height: AppSpacing.xl2),
 
-            // Widget de Categorias refeito para ser um Wrap!
+            // Categorias
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text('Escolha uma categoria', style: AppTypography.h4),
+                child: Text('Escolha uma categoria',
+                    style: AppTypography.h4),
               ),
             ),
             const SizedBox(height: AppSpacing.md),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: AppSpacing.md),
               child: CategorySelectorWidget(
-                isForDriver: false, // Cliente
+                isForDriver: false,
                 onSelected: _onCategorySelected,
               ),
             ),
-
             const SizedBox(height: AppSpacing.xl2),
-            
-            // Entregas recentes (apenas scroll horizontal ou lista pequena)
+
+            // Entregas em andamento
             deliveriesAsync.when(
               data: (deliveries) {
-                if (deliveries.isEmpty) return const SizedBox.shrink();
-                
-                final active = (deliveries as List).where((d) => d.isActive).toList();
+                final active =
+                    (deliveries as List).where((d) => d.isActive).toList();
                 if (active.isEmpty) return const SizedBox.shrink();
 
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.lg),
                       child: Text('Em andamento', style: AppTypography.h4),
                     ),
                     const SizedBox(height: AppSpacing.sm),
                     SizedBox(
                       height: 240,
                       child: ListView.separated(
-                        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.lg),
                         scrollDirection: Axis.horizontal,
                         itemCount: active.length,
-                        separatorBuilder: (context, index) => const SizedBox(width: AppSpacing.md),
-                        itemBuilder: (context, index) {
-                          return SizedBox(
-                            width: MediaQuery.of(context).size.width - (AppSpacing.lg * 2),
-                            child: DeliveryCard(delivery: active[index], index: index),
-                          );
-                        },
+                        separatorBuilder: (_, __) =>
+                            const SizedBox(width: AppSpacing.md),
+                        itemBuilder: (_, i) => SizedBox(
+                          width: MediaQuery.of(context).size.width -
+                              (AppSpacing.lg * 2),
+                          child: DeliveryCard(
+                              delivery: active[i], index: i),
+                        ),
                       ),
                     ),
                     const SizedBox(height: AppSpacing.lg),
                   ],
                 );
               },
-              loading: () => const SizedBox(height: 40, child: Center(child: CircularProgressIndicator())),
+              loading: () => const SizedBox(
+                height: 40,
+                child: Center(
+                  child: CircularProgressIndicator(
+                    color: AppColors.primary,
+                    strokeWidth: 2,
+                  ),
+                ),
+              ),
               error: (_, __) => const SizedBox.shrink(),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Botão flutuante circular ──────────────────────────────────
+class _FloatingIconButton extends StatelessWidget {
+  final IconData icon;
+  final Color? iconColor;
+  final VoidCallback? onPressed;
+
+  const _FloatingIconButton({
+    required this.icon,
+    this.iconColor,
+    this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: IconButton(
+        icon: Icon(icon, color: iconColor ?? AppColors.textPrimary),
+        onPressed: onPressed,
+      ),
+    );
+  }
+}
+
+// ── Drawer lateral do cliente ─────────────────────────────────
+class _ClientDrawer extends StatelessWidget {
+  final UserModel user;
+  final VoidCallback onHome;
+  final VoidCallback onHistory;
+  final VoidCallback onProfile;
+  final VoidCallback onSignOut;
+
+  const _ClientDrawer({
+    required this.user,
+    required this.onHome,
+    required this.onHistory,
+    required this.onProfile,
+    required this.onSignOut,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final initial =
+        user.name.isNotEmpty ? user.name[0].toUpperCase() : 'C';
+
+    return Drawer(
+      width: MediaQuery.of(context).size.width * 0.78,
+      backgroundColor: AppColors.surface,
+      child: Column(
+        children: [
+          // ── Cabeçalho do perfil ──────────────────
+          Container(
+            width: double.infinity,
+            decoration: const BoxDecoration(
+              color: AppColors.surfaceHigh,
+              border: Border(
+                bottom: BorderSide(color: AppColors.surfaceBorder),
+              ),
+            ),
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.xl,
+                    AppSpacing.lg,
+                    AppSpacing.xl,
+                    AppSpacing.xl),
+                child: Row(
+                  children: [
+                    // Avatar
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryDeep,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: AppColors.primary.withValues(alpha: 0.5),
+                          width: 2,
+                        ),
+                        image: user.avatarUrl != null &&
+                                user.avatarUrl!.isNotEmpty
+                            ? DecorationImage(
+                                image: NetworkImage(user.avatarUrl!),
+                                fit: BoxFit.cover,
+                              )
+                            : null,
+                      ),
+                      child: user.avatarUrl == null ||
+                              user.avatarUrl!.isEmpty
+                          ? Center(
+                              child: Text(
+                                initial,
+                                style: AppTypography.h3
+                                    .copyWith(color: AppColors.primary),
+                              ),
+                            )
+                          : null,
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            user.name,
+                            style: AppTypography.h4,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Cliente',
+                            style: AppTypography.bodySmall.copyWith(
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: AppSpacing.lg),
+          const Divider(
+            color: AppColors.surfaceBorder,
+            indent: AppSpacing.xl,
+            endIndent: AppSpacing.xl,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+
+          // ── Itens de navegação ───────────────────
+          _DrawerNavItem(
+            icon: Icons.home_rounded,
+            label: 'Início',
+            onTap: onHome,
+          ),
+          _DrawerNavItem(
+            icon: Icons.receipt_long_rounded,
+            label: 'Histórico',
+            onTap: onHistory,
+          ),
+          _DrawerNavItem(
+            icon: Icons.person_outline_rounded,
+            label: 'Perfil',
+            onTap: onProfile,
+          ),
+
+          const Spacer(),
+          const Divider(
+            color: AppColors.surfaceBorder,
+            indent: AppSpacing.xl,
+            endIndent: AppSpacing.xl,
+          ),
+
+          // ── Sair ─────────────────────────────────
+          _DrawerNavItem(
+            icon: Icons.logout_rounded,
+            label: 'Sair',
+            color: AppColors.error,
+            onTap: onSignOut,
+          ),
+          const SafeArea(top: false, child: SizedBox.shrink()),
+          const SizedBox(height: AppSpacing.md),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Item do drawer ────────────────────────────────────────────
+class _DrawerNavItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color? color;
+
+  const _DrawerNavItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = color ?? AppColors.textPrimary;
+    return InkWell(
+      onTap: onTap,
+      highlightColor: AppColors.surfaceHigh,
+      splashColor: Colors.transparent,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.xl,
+          vertical: AppSpacing.md,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: color != null
+                    ? color!.withValues(alpha: 0.1)
+                    : AppColors.surfaceHigh,
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+              ),
+              child: Icon(icon, color: c, size: 19),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Text(label, style: AppTypography.h4.copyWith(color: c)),
           ],
         ),
       ),

@@ -132,22 +132,9 @@ class MotoboyRepository {
       );
     }
 
-    // 2. Verifica se a corrida ainda está pendente
-    final delivery = await _db
-        .from('deliveries')
-        .select('status, motoboy_id')
-        .eq('id', deliveryId)
-        .maybeSingle();
-
-    if (delivery == null) {
-      throw Exception('Corrida não encontrada.');
-    }
-
-    if (delivery['status'] != 'pending') {
-      throw Exception('Esta corrida já foi aceita por outro entregador.');
-    }
-
-    // 3. Aceita a corrida (atualiza status e motoboy_id)
+    // 2. Aceita atomicamente: só atualiza se ainda estiver 'pending'
+    // Isso elimina a race condition — se dois motoboys tentarem simultaneamente,
+    // apenas um consegue (o outro recebe lista vazia).
     final updated = await _db
         .from('deliveries')
         .update({
@@ -156,21 +143,31 @@ class MotoboyRepository {
           'accepted_at': DateTime.now().toIso8601String(),
         })
         .eq('id', deliveryId)
-        .select('status, motoboy_id');
+        .eq('status', 'pending')
+        .select('id');
 
-    // 4. Verifica se o update realmente aconteceu
     if ((updated as List).isEmpty) {
       throw Exception(
-        'Não foi possível aceitar a corrida. '
-        'Verifique suas permissões ou tente novamente.',
+        'Esta corrida já foi aceita por outro entregador. Tente outra!',
       );
     }
+  }
 
-    final afterStatus = updated.first['status'];
-    if (afterStatus != 'accepted') {
-      throw Exception(
-        'Falha ao aceitar corrida (status: $afterStatus). Tente novamente.',
-      );
+  /// Desistir de uma corrida aceita (volta a 'pending' para outro entregador pegar)
+  Future<void> abandonDelivery(String deliveryId) async {
+    final updated = await _db
+        .from('deliveries')
+        .update({
+          'motoboy_id': null,
+          'status': 'pending',
+          'accepted_at': null,
+        })
+        .eq('id', deliveryId)
+        .eq('status', 'accepted')
+        .select('id');
+
+    if ((updated as List).isEmpty) {
+      throw Exception('Não foi possível desistir da corrida. Tente novamente.');
     }
   }
 

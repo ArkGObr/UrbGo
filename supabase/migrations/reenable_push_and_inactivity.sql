@@ -80,7 +80,7 @@ CREATE TRIGGER trg_motoboy_set_active
   EXECUTE FUNCTION public.fn_motoboy_set_active();
 
 
--- ── 3. TRIGGER: nova entrega → notificar motoboys online ─────────────────
+-- ── 3. TRIGGER: nova entrega → notificar todos os motoboys (online ou não) ──
 
 CREATE OR REPLACE FUNCTION public.notify_motoboys_new_delivery()
 RETURNS TRIGGER
@@ -97,8 +97,7 @@ BEGIN
     SELECT u.fcm_token
     FROM   motoboys m
     JOIN   users u ON u.id = m.id
-    WHERE  m.is_online = true
-      AND  u.fcm_token IS NOT NULL
+    WHERE  u.fcm_token IS NOT NULL
       AND  m.vehicle_category = NEW.vehicle_category
     LIMIT 50
   LOOP

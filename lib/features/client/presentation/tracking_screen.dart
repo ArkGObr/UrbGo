@@ -43,6 +43,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   List<LatLng> _routePoints = [];
   bool _isCancelling = false;
   bool _hasShownRating = false;
+  bool _hasCheckedInitialRating = false;
 
   @override
   void initState() {
@@ -216,6 +217,25 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     }
   }
 
+  void _maybeShowRating(DeliveryModel delivery) {
+    if (_hasShownRating) return;
+    if (delivery.motoboyId == null) return;
+    _hasShownRating = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final alreadyRated = await RatingRepository().hasRated(delivery.id);
+      if (!mounted) return;
+      if (alreadyRated) return;
+      if (!context.mounted) return;
+      // ignore: use_build_context_synchronously
+      await RatingBottomSheet.show(context, ref, delivery);
+      if (!mounted || !context.mounted) return;
+      ref.invalidate(clientDeliveriesProvider);
+      // ignore: use_build_context_synchronously
+      context.go('/client/home');
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final deliveryAsync = ref.watch(deliveryStreamProvider(widget.deliveryId));
@@ -229,14 +249,18 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
             nextStatus != null &&
             prevStatus != nextStatus) {
           _onStatusChanged(prevStatus, nextStatus);
+          if (nextStatus == DeliveryStatus.completed) {
+            final delivery = next.valueOrNull;
+            if (delivery != null) _maybeShowRating(delivery);
+          }
         }
       },
     );
 
     return deliveryAsync.when(
-      loading: () => Scaffold(
+      loading: () => const Scaffold(
         backgroundColor: AppColors.background,
-        body: const Center(
+        body: Center(
           child: CircularProgressIndicator(
             color: AppColors.primary,
             strokeWidth: 2,
@@ -274,18 +298,10 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
           _loadRoute(delivery);
         }
 
-        // Mostra avaliação quando entrega for concluída (uma vez)
-        if (delivery.status == DeliveryStatus.completed &&
-            delivery.motoboyId != null &&
-            !_hasShownRating) {
-          _hasShownRating = true;
-          WidgetsBinding.instance.addPostFrameCallback((_) async {
-            if (!mounted) return;
-            final alreadyRated = await RatingRepository().hasRated(delivery.id);
-            if (!mounted || alreadyRated) return;
-            if (!context.mounted) return;
-            await RatingBottomSheet.show(context, ref, delivery); // ignore: use_build_context_synchronously
-          });
+        // Caso a tela abra com a entrega já concluída (sem transição de status)
+        if (delivery.status == DeliveryStatus.completed && !_hasCheckedInitialRating) {
+          _hasCheckedInitialRating = true;
+          _maybeShowRating(delivery);
         }
 
         // Usa posição do motoboy do modelo se o realtime ainda não atualizou
@@ -491,12 +507,12 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
 
               // ── Card inferior ─────────────────────
               Container(
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   color: AppColors.surface,
-                  borderRadius: const BorderRadius.vertical(
+                  borderRadius: BorderRadius.vertical(
                     top: Radius.circular(AppRadius.xl),
                   ),
-                  border: const Border(
+                  border: Border(
                     top: BorderSide(color: AppColors.surfaceBorder),
                   ),
                 ),

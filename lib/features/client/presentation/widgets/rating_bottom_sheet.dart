@@ -74,11 +74,13 @@ class _RatingBottomSheetState extends ConsumerState<RatingBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final padding = MediaQuery.of(context).viewInsets.bottom;
+    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
 
     return Padding(
-      padding: EdgeInsets.only(bottom: padding),
-      child: Padding(
+      padding: EdgeInsets.only(bottom: keyboardHeight),
+      child: SafeArea(
+        top: false,
+        child: Padding(
         padding: const EdgeInsets.all(AppSpacing.xl2),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -231,6 +233,7 @@ class _RatingBottomSheetState extends ConsumerState<RatingBottomSheet> {
             const SizedBox(height: AppSpacing.sm),
           ],
         ),
+      ),
       ),
     );
   }
