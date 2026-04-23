@@ -86,34 +86,6 @@ List<String> missingDriverRegistrationItems({
 }) {
   final missing = <String>[];
 
-  if (cpf.trim().isEmpty) {
-    missing.add('CPF');
-  }
-
-  if (driverCategoryNeedsPlate(category) && vehiclePlate.trim().isEmpty) {
-    missing.add('placa do veículo');
-  }
-
-  if (driverCategoryNeedsPlate(category) && vehicleModel.trim().isEmpty) {
-    missing.add('modelo do veículo');
-  }
-
-  if (driverCategoryNeedsPlate(category) && vehicleYear.trim().isEmpty) {
-    missing.add('ano do veículo');
-  }
-
-  if (driverCategoryNeedsCnh(category) && cnhNumber.trim().isEmpty) {
-    missing.add('número da CNH');
-  }
-
-  if (driverCategoryNeedsCnh(category) && cnhCategory.trim().isEmpty) {
-    missing.add('categoria da CNH');
-  }
-
-  if (driverCategoryNeedsCnh(category) && cnhExpirationDate == null) {
-    missing.add('validade da CNH');
-  }
-
   if (!hasIdentityDocument) {
     missing.add('documento de identificação');
   }

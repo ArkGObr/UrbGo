@@ -10,6 +10,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../shared/widgets/primary_button.dart';
+import '../domain/driver_registration_rules.dart';
 import '../domain/motoboy_providers.dart';
 
 class MotoboyProfileScreen extends ConsumerStatefulWidget {
@@ -27,11 +28,16 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
   bool _isLoading = false;
   File? _selectedImage;
   String? _currentAvatarUrl;
-
   File? _cnhImage;
   File? _crlvImage;
+  File? _identityImage;
+  File? _selfieImage;
+  File? _addressImage;
   String? _currentCnhUrl;
   String? _currentCrlvUrl;
+  String? _currentIdentityUrl;
+  String? _currentSelfieUrl;
+  String? _currentAddressUrl;
 
   @override
   void initState() {
@@ -45,6 +51,9 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
           _currentAvatarUrl = m.avatarUrl;
           _currentCnhUrl = m.cnhPhotoUrl;
           _currentCrlvUrl = m.vehicleDocumentUrl;
+          _currentIdentityUrl = m.identityDocumentUrl;
+          _currentSelfieUrl = m.selfieWithDocumentUrl;
+          _currentAddressUrl = m.addressProofUrl;
         });
       }
     });
@@ -70,7 +79,7 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
     }
   }
 
-  Future<void> _pickDocumentImage(bool isCnh) async {
+  Future<void> _pickDocumentImage(int docType) async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(
       source: ImageSource.gallery,
@@ -79,11 +88,11 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
 
     if (picked != null) {
       setState(() {
-        if (isCnh) {
-          _cnhImage = File(picked.path);
-        } else {
-          _crlvImage = File(picked.path);
-        }
+        if (docType == 1) _cnhImage = File(picked.path);
+        else if (docType == 2) _crlvImage = File(picked.path);
+        else if (docType == 3) _identityImage = File(picked.path);
+        else if (docType == 4) _selfieImage = File(picked.path);
+        else if (docType == 5) _addressImage = File(picked.path);
       });
     }
   }
@@ -123,7 +132,7 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
         final ext = _cnhImage!.path.split('.').last;
         final path = '${user.id}/cnh-${DateTime.now().millisecondsSinceEpoch}.$ext';
         await Supabase.instance.client.storage.from('driver-documents').upload(path, _cnhImage!, fileOptions: const FileOptions(upsert: true));
-        cnhUrl = path; // following auth_repository.dart logic of saving the path
+        cnhUrl = path;
       }
 
       String? crlvUrl = _currentCrlvUrl;
@@ -134,7 +143,52 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
         crlvUrl = path;
       }
 
+      String? identityUrl = _currentIdentityUrl;
+      if (_identityImage != null) {
+        final ext = _identityImage!.path.split('.').last;
+        final path = '${user.id}/identity-${DateTime.now().millisecondsSinceEpoch}.$ext';
+        await Supabase.instance.client.storage.from('driver-documents').upload(path, _identityImage!, fileOptions: const FileOptions(upsert: true));
+        identityUrl = path;
+      }
+
+      String? selfieUrl = _currentSelfieUrl;
+      if (_selfieImage != null) {
+        final ext = _selfieImage!.path.split('.').last;
+        final path = '${user.id}/selfie-${DateTime.now().millisecondsSinceEpoch}.$ext';
+        await Supabase.instance.client.storage.from('driver-documents').upload(path, _selfieImage!, fileOptions: const FileOptions(upsert: true));
+        selfieUrl = path;
+      }
+
+      String? addressUrl = _currentAddressUrl;
+      if (_addressImage != null) {
+        final ext = _addressImage!.path.split('.').last;
+        final path = '${user.id}/addr-${DateTime.now().millisecondsSinceEpoch}.$ext';
+        await Supabase.instance.client.storage.from('driver-documents').upload(path, _addressImage!, fileOptions: const FileOptions(upsert: true));
+        addressUrl = path;
+      }
+
       final description = _descriptionController.text.trim();
+
+      // Recalcular aprovação
+      final motoboy = ref.read(motoboyStreamProvider).valueOrNull!;
+      final missing = missingDriverRegistrationItems(
+        category: motoboy.vehicleCategory,
+        cpf: motoboy.cpf ?? '',
+        vehiclePlate: motoboy.vehiclePlate ?? '',
+        vehicleModel: motoboy.vehicleModel ?? '',
+        vehicleYear: motoboy.vehicleYear?.toString() ?? '',
+        cnhNumber: motoboy.cnhNumber ?? '',
+        cnhCategory: motoboy.cnhCategory ?? '',
+        cnhExpirationDate: motoboy.cnhExpirationDate,
+        hasIdentityDocument: identityUrl != null && identityUrl.isNotEmpty,
+        hasSelfieWithDocument: selfieUrl != null && selfieUrl.isNotEmpty,
+        hasAddressProof: addressUrl != null && addressUrl.isNotEmpty,
+        hasCnhPhoto: cnhUrl != null && cnhUrl.isNotEmpty,
+        hasVehicleDocument: crlvUrl != null && crlvUrl.isNotEmpty,
+        hasAdditionalPermit: motoboy.additionalPermitUrl != null && motoboy.additionalPermitUrl!.isNotEmpty,
+      );
+
+      final newStatus = missing.isEmpty ? 'pending_review' : 'pending_documents';
 
       await Supabase.instance.client
           .from('motoboys')
@@ -143,6 +197,10 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
             'description': description,
             'cnh_photo_url': cnhUrl,
             'vehicle_document_url': crlvUrl,
+            'identity_document_url': identityUrl,
+            'selfie_with_document_url': selfieUrl,
+            'address_proof_url': addressUrl,
+            'approval_status': newStatus,
           })
           .eq('id', user.id);
 
@@ -399,18 +457,44 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
                       ),
                       const SizedBox(height: AppSpacing.md),
                       _buildDocumentItem(
-                        title: 'CNH',
-                        file: _cnhImage,
-                        currentUrl: _currentCnhUrl,
-                        onTap: () => _pickDocumentImage(true),
+                        title: 'Documento de Identidade (Frente e Verso)',
+                        file: _identityImage,
+                        currentUrl: _currentIdentityUrl,
+                        onTap: () => _pickDocumentImage(3),
                       ),
                       const SizedBox(height: AppSpacing.md),
                       _buildDocumentItem(
-                        title: 'Documento do Veículo (CRLV)',
-                        file: _crlvImage,
-                        currentUrl: _currentCrlvUrl,
-                        onTap: () => _pickDocumentImage(false),
+                        title: 'Selfie Segurando Documento',
+                        file: _selfieImage,
+                        currentUrl: _currentSelfieUrl,
+                        onTap: () => _pickDocumentImage(4),
                       ),
+                      const SizedBox(height: AppSpacing.md),
+                      _buildDocumentItem(
+                        title: 'Comprovante de Residência',
+                        file: _addressImage,
+                        currentUrl: _currentAddressUrl,
+                        onTap: () => _pickDocumentImage(5),
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      if (driverCategoryNeedsCnh(motoboy.vehicleCategory)) ...[
+                        _buildDocumentItem(
+                          title: 'CNH',
+                          file: _cnhImage,
+                          currentUrl: _currentCnhUrl,
+                          onTap: () => _pickDocumentImage(1),
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+                      ],
+                      if (driverCategoryNeedsVehicleDocument(motoboy.vehicleCategory)) ...[
+                        _buildDocumentItem(
+                          title: 'Documento do Veículo (CRLV)',
+                          file: _crlvImage,
+                          currentUrl: _currentCrlvUrl,
+                          onTap: () => _pickDocumentImage(2),
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+                      ],
 
                       const SizedBox(height: AppSpacing.xl3),
 

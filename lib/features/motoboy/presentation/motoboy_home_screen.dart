@@ -1247,6 +1247,44 @@ class _ApprovalStatusCard extends StatelessWidget {
               ),
             ),
           ],
+          if (motoboy.approvalStatus == MotoboyApprovalStatus.pendingDocuments) ...[
+            const SizedBox(height: AppSpacing.md),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: AppColors.background,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.full),
+                  ),
+                ),
+                onPressed: () => context.push('/motoboy/profile'),
+                child: const Text(
+                  'Concluir Cadastro',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+          ] else if (motoboy.approvalStatus == MotoboyApprovalStatus.pendingReview) ...[
+            const SizedBox(height: AppSpacing.md),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.warning,
+                  side: BorderSide(color: AppColors.warning.withValues(alpha: 0.5)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.full),
+                  ),
+                ),
+                onPressed: () => context.push('/motoboy/profile'),
+                child: const Text('Ver documentos enviados'),
+              ),
+            ),
+          ],
         ],
       ),
     );
