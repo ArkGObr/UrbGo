@@ -17,7 +17,7 @@ serve(async (req: Request) => {
   }
 
   try {
-    const { motoboyId, amount, paymentMethod, description } = await req.json();
+    const { motoboyId, amount } = await req.json();
 
     if (!motoboyId || !amount || amount < 1) {
       return new Response(
@@ -52,9 +52,7 @@ serve(async (req: Request) => {
       type: "recharge",
       amount: amount,
       balance_after: newBalance,
-      description:
-        description ??
-        `[SIMULADO] Recarga via ${String(paymentMethod ?? "pix").toUpperCase()}`,
+      description: "[SIMULADO] Recarga de teste",
     });
 
     return new Response(

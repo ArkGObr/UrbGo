@@ -12,7 +12,6 @@ import '../../../core/constants/vehicle_categories.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/widgets/app_toast.dart';
 import '../../../core/services/route_service.dart';
-import '../../../core/services/notification_service.dart';
 import '../../shared/widgets/primary_button.dart';
 import '../../shared/widgets/vehicle_badge.dart';
 import '../data/rating_repository.dart';
@@ -47,11 +46,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   bool _isCancelling = false;
   bool _hasShownRating = false;
   bool _hasCheckedInitialRating = false;
-
   final RouteService _routeService = RouteService();
   DateTime? _lastEtaFetch;
   String? _routeCacheKey;
-  bool _hasShownPickupArrival = false;
 
   @override
   void initState() {
@@ -105,36 +102,8 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
               final pos = LatLng(lat, lng);
               setState(() => _animateMotoboyTo(pos));
               _updateEta(pos);
-              _maybeNotifyPickupArrival(pos);
             }
           },
-        );
-  }
-
-  Future<void> _maybeNotifyPickupArrival(LatLng motoboyPos) async {
-    if (_hasShownPickupArrival) return;
-    final delivery = ref
-        .read(deliveryStreamProvider(widget.deliveryId))
-        .valueOrNull;
-    if (delivery == null || delivery.status != DeliveryStatus.accepted) return;
-    final pickup = LatLng(delivery.pickupLat, delivery.pickupLng);
-    final meters = const Distance().as(LengthUnit.Meter, motoboyPos, pickup);
-    if (meters > 150) return;
-
-    _hasShownPickupArrival = true;
-    if (!mounted) return;
-    AppToast.show(
-      context,
-      title: 'Entregador chegou à coleta',
-      subtitle: 'Seu pedido está prestes a ser retirado.',
-      type: AppToastType.info,
-    );
-    await ref
-        .read(notificationServiceProvider)
-        .showClientAlert(
-          title: 'Entregador chegou à coleta',
-          body: 'Seu pedido está prestes a ser retirado.',
-          payload: delivery.id,
         );
   }
 
@@ -447,7 +416,6 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
             delivery.motoboyLat != null &&
             delivery.motoboyLng != null) {
           _motoboyTo = LatLng(delivery.motoboyLat!, delivery.motoboyLng!);
-          _maybeNotifyPickupArrival(_motoboyTo!);
         }
 
         final pickupLatLng = LatLng(delivery.pickupLat, delivery.pickupLng);

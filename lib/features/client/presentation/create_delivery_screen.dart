@@ -11,6 +11,7 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/constants/vehicle_categories.dart';
+import '../../../core/services/connectivity_service.dart';
 import '../../../core/services/dynamic_pricing_service.dart';
 import '../../../core/services/geocoding_service.dart';
 import '../../../core/services/route_service.dart';
@@ -499,6 +500,11 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
 
   Future<void> _submit() async {
     FocusScope.of(context).unfocus();
+    final connected = await ConnectivityService.ensureConnected(
+      context,
+      message: 'Conecte-se à internet para criar a entrega.',
+    );
+    if (!connected || !mounted) return;
     setState(() => _isLoading = true);
     try {
       final ok = await _ensureGeocoded();

@@ -76,6 +76,7 @@ class NotificationService {
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _local =
       FlutterLocalNotificationsPlugin();
+  bool _initialized = false;
 
   // GoRouter é injetado para permitir navegação por tap na notificação
   String Function(String deliveryId)? _clientTrackingPath;
@@ -91,6 +92,9 @@ class NotificationService {
   }
 
   Future<void> initialize() async {
+    if (_initialized) return;
+    _initialized = true;
+
     // 1. Solicitar permissão (iOS + Android 13+)
     await _fcm.requestPermission(alert: true, badge: true, sound: true);
 

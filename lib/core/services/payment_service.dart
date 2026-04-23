@@ -45,10 +45,7 @@ class PaymentService {
   }) async {
     final response = await _dio.post(
       '/simulate-recharge',
-      data: {
-        'motoboyId': motoboyId,
-        'amount': amount,
-      },
+      data: {'motoboyId': motoboyId, 'amount': amount},
       options: Options(headers: _authHeaders),
     );
     return SimulateRechargeResult.fromJson(response.data);
