@@ -28,6 +28,11 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
   File? _selectedImage;
   String? _currentAvatarUrl;
 
+  File? _cnhImage;
+  File? _crlvImage;
+  String? _currentCnhUrl;
+  String? _currentCrlvUrl;
+
   @override
   void initState() {
     super.initState();
@@ -38,6 +43,8 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
         _descriptionController.text = m.description ?? '';
         setState(() {
           _currentAvatarUrl = m.avatarUrl;
+          _currentCnhUrl = m.cnhPhotoUrl;
+          _currentCrlvUrl = m.vehicleDocumentUrl;
         });
       }
     });
@@ -59,6 +66,24 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
     if (picked != null) {
       setState(() {
         _selectedImage = File(picked.path);
+      });
+    }
+  }
+
+  Future<void> _pickDocumentImage(bool isCnh) async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 70,
+    );
+
+    if (picked != null) {
+      setState(() {
+        if (isCnh) {
+          _cnhImage = File(picked.path);
+        } else {
+          _crlvImage = File(picked.path);
+        }
       });
     }
   }
@@ -93,11 +118,32 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
             .getPublicUrl(uploadPath);
       }
 
+      String? cnhUrl = _currentCnhUrl;
+      if (_cnhImage != null) {
+        final ext = _cnhImage!.path.split('.').last;
+        final path = '${user.id}/cnh-${DateTime.now().millisecondsSinceEpoch}.$ext';
+        await Supabase.instance.client.storage.from('driver-documents').upload(path, _cnhImage!, fileOptions: const FileOptions(upsert: true));
+        cnhUrl = path; // following auth_repository.dart logic of saving the path
+      }
+
+      String? crlvUrl = _currentCrlvUrl;
+      if (_crlvImage != null) {
+        final ext = _crlvImage!.path.split('.').last;
+        final path = '${user.id}/crlv-${DateTime.now().millisecondsSinceEpoch}.$ext';
+        await Supabase.instance.client.storage.from('driver-documents').upload(path, _crlvImage!, fileOptions: const FileOptions(upsert: true));
+        crlvUrl = path;
+      }
+
       final description = _descriptionController.text.trim();
 
       await Supabase.instance.client
           .from('motoboys')
-          .update({'avatar_url': avatarUrl, 'description': description})
+          .update({
+            'avatar_url': avatarUrl,
+            'description': description,
+            'cnh_photo_url': cnhUrl,
+            'vehicle_document_url': crlvUrl,
+          })
           .eq('id', user.id);
 
       if (mounted) {
@@ -338,6 +384,36 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
 
                       const SizedBox(height: AppSpacing.xl3),
 
+                      Text(
+                        'Documentos',
+                        style: AppTypography.h4.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      Text(
+                        'Verifique e atualize seus documentos obrigatórios.',
+                        style: AppTypography.bodySmall.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      _buildDocumentItem(
+                        title: 'CNH',
+                        file: _cnhImage,
+                        currentUrl: _currentCnhUrl,
+                        onTap: () => _pickDocumentImage(true),
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      _buildDocumentItem(
+                        title: 'Documento do Veículo (CRLV)',
+                        file: _crlvImage,
+                        currentUrl: _currentCrlvUrl,
+                        onTap: () => _pickDocumentImage(false),
+                      ),
+
+                      const SizedBox(height: AppSpacing.xl3),
+
                       PrimaryButton(
                         label: 'Salvar Perfil',
                         isLoading: _isLoading,
@@ -348,6 +424,62 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
                 ),
               ),
             ),
+      ),
+    );
+  }
+
+  Widget _buildDocumentItem({
+    required String title,
+    required File? file,
+    required String? currentUrl,
+    required VoidCallback onTap,
+  }) {
+    final hasDoc = file != null || (currentUrl != null && currentUrl.isNotEmpty);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.md),
+      child: Container(
+        padding: AppSpacing.cardPadding,
+        decoration: BoxDecoration(
+          color: AppColors.surfaceHigh,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          border: Border.all(color: AppColors.surfaceBorder),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: hasDoc ? AppColors.primary.withValues(alpha: 0.15) : AppColors.surfaceBorder,
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+              ),
+              child: Icon(
+                hasDoc ? Icons.check_circle_rounded : Icons.insert_drive_file_outlined,
+                color: hasDoc ? AppColors.primary : AppColors.textTertiary,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: AppTypography.labelLarge,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    hasDoc ? 'Enviado (Toque para trocar)' : 'Toque para enviar',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

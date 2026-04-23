@@ -14,6 +14,8 @@ import '../../shared/widgets/micro_interactions.dart';
 import '../../shared/widgets/primary_button.dart';
 import '../../shared/widgets/vehicle_badge.dart';
 import '../data/motoboy_repository.dart';
+import '../domain/driver_registration_rules.dart';
+import '../domain/motoboy_model.dart';
 import '../domain/motoboy_providers.dart';
 
 class AvailableRunsScreen extends ConsumerStatefulWidget {
@@ -231,124 +233,189 @@ class _AvailableRunsScreenState extends ConsumerState<AvailableRunsScreen> {
           const SizedBox(width: AppSpacing.sm),
         ],
       ),
-      body: runsAsync.when(
+      body: motoboyAsync.when(
         loading: () => const Center(
           child: CircularProgressIndicator(
             color: AppColors.primary,
             strokeWidth: 2,
           ),
         ),
-        error: (e, _) {
-          debugPrint('[AvailableRuns] Erro: $e');
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(
-                  Icons.error_outline,
-                  color: AppColors.error,
-                  size: 48,
+        error: (e, _) => Center(child: Text('Erro: $e')),
+        data: (motoboy) {
+          if (!motoboy.isApproved) {
+            return _ApprovalBlockedBody(motoboy: motoboy);
+          }
+
+          return runsAsync.when(
+            loading: () => const Center(
+              child: CircularProgressIndicator(
+                color: AppColors.primary,
+                strokeWidth: 2,
+              ),
+            ),
+            error: (e, _) {
+              debugPrint('[AvailableRuns] Erro: $e');
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.error_outline,
+                      color: AppColors.error,
+                      size: 48,
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                    Text('Erro ao carregar corridas', style: AppTypography.h3),
+                    const SizedBox(height: AppSpacing.sm),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.xl3,
+                      ),
+                      child: Text(
+                        '$e',
+                        textAlign: TextAlign.center,
+                        style: AppTypography.bodySmall,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                    TextButton.icon(
+                      onPressed: () => ref.invalidate(availableRunsProvider),
+                      icon: const Icon(
+                        Icons.refresh_rounded,
+                        color: AppColors.primary,
+                      ),
+                      label: Text(
+                        'Tentar novamente',
+                        style: AppTypography.labelLarge.copyWith(
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: AppSpacing.lg),
-                Text('Erro ao carregar corridas', style: AppTypography.h3),
-                const SizedBox(height: AppSpacing.sm),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.xl3,
+              );
+            },
+            data: (runs) {
+              if (runs.isEmpty) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.xl4),
+                    child: FadeSlideIn(
+                      delay: const Duration(milliseconds: 200),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 80,
+                            height: 80,
+                            decoration: BoxDecoration(
+                              color: AppColors.surface,
+                              borderRadius: BorderRadius.circular(AppRadius.xl),
+                              border: Border.all(
+                                color: AppColors.surfaceBorder,
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.search_off_rounded,
+                              color: AppColors.textTertiary,
+                              size: 40,
+                            ),
+                          ),
+                          const SizedBox(height: AppSpacing.xl2),
+                          Text(
+                            'Nenhuma corrida na sua região',
+                            style: AppTypography.h3.copyWith(
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: AppSpacing.sm),
+                          Text(
+                            'Novas corridas aparecem automaticamente',
+                            style: AppTypography.bodyMedium,
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                  child: Text(
-                    '$e',
-                    textAlign: TextAlign.center,
-                    style: AppTypography.bodySmall,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.lg),
-                TextButton.icon(
-                  onPressed: () => ref.invalidate(availableRunsProvider),
-                  icon: const Icon(
-                    Icons.refresh_rounded,
-                    color: AppColors.primary,
-                  ),
-                  label: Text(
-                    'Tentar novamente',
-                    style: AppTypography.labelLarge.copyWith(
-                      color: AppColors.primary,
+                );
+              }
+
+              return RefreshIndicator(
+                onRefresh: () async {
+                  ref.invalidate(availableRunsProvider);
+                  await ref.read(availableRunsProvider.future);
+                },
+                color: AppColors.primary,
+                backgroundColor: AppColors.surface,
+                child: ListView.separated(
+                  padding: AppSpacing.screenPaddingFull,
+                  itemCount: runs.length,
+                  separatorBuilder: (_, __) =>
+                      const SizedBox(height: AppSpacing.md),
+                  itemBuilder: (_, i) => StaggeredListItem(
+                    index: i,
+                    child: _RunCard(
+                      delivery: runs[i],
+                      isAccepting: _isAccepting && _acceptingId == runs[i].id,
+                      onAccept: () => _acceptRun(runs[i]),
                     ),
                   ),
                 ),
-              ],
-            ),
-          );
-        },
-        data: (runs) {
-          if (runs.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.xl4),
-                child: FadeSlideIn(
-                  delay: const Duration(milliseconds: 200),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: 80,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          color: AppColors.surface,
-                          borderRadius: BorderRadius.circular(AppRadius.xl),
-                          border: Border.all(color: AppColors.surfaceBorder),
-                        ),
-                        child: const Icon(
-                          Icons.search_off_rounded,
-                          color: AppColors.textTertiary,
-                          size: 40,
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.xl2),
-                      Text(
-                        'Nenhuma corrida na sua região',
-                        style: AppTypography.h3.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.sm),
-                      Text(
-                        'Novas corridas aparecem automaticamente',
-                        style: AppTypography.bodyMedium,
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          }
-
-          return RefreshIndicator(
-            onRefresh: () async {
-              ref.invalidate(availableRunsProvider);
-              await ref.read(availableRunsProvider.future);
+              );
             },
-            color: AppColors.primary,
-            backgroundColor: AppColors.surface,
-            child: ListView.separated(
-              padding: AppSpacing.screenPaddingFull,
-              itemCount: runs.length,
-              separatorBuilder: (_, __) =>
-                  const SizedBox(height: AppSpacing.md),
-              itemBuilder: (_, i) => StaggeredListItem(
-                index: i,
-                child: _RunCard(
-                  delivery: runs[i],
-                  isAccepting: _isAccepting && _acceptingId == runs[i].id,
-                  onAccept: () => _acceptRun(runs[i]),
-                ),
-              ),
-            ),
           );
         },
+      ),
+    );
+  }
+}
+
+class _ApprovalBlockedBody extends StatelessWidget {
+  final MotoboyModel motoboy;
+
+  const _ApprovalBlockedBody({required this.motoboy});
+
+  @override
+  Widget build(BuildContext context) {
+    final reason = motoboy.rejectionReason?.trim();
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xl3),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.verified_user_outlined,
+              color: AppColors.warning,
+              size: 54,
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            Text(
+              motoboy.approvalStatus.label,
+              style: AppTypography.h3,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              reason != null && reason.isNotEmpty
+                  ? reason
+                  : motoboy.approvalStatus.summary,
+              style: AppTypography.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
+            if ((motoboy.missingRegistrationItems as List).isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                'Pendências: ${motoboy.missingRegistrationItems.join(', ')}',
+                style: AppTypography.bodySmall,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

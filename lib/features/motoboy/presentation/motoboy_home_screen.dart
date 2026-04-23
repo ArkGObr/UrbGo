@@ -21,6 +21,7 @@ import '../../../core/widgets/app_toast.dart';
 import '../../auth/domain/auth_provider.dart';
 import '../../client/domain/delivery_model.dart';
 import '../../shared/widgets/primary_button.dart';
+import '../domain/driver_registration_rules.dart';
 import '../domain/motoboy_model.dart';
 import '../domain/motoboy_providers.dart';
 
@@ -824,8 +825,14 @@ class _BottomPanel extends StatelessWidget {
                 _VehicleCategoryCard(motoboy: motoboy),
                 const SizedBox(height: AppSpacing.lg),
 
+                if (!motoboy.isApproved) ...[
+                  _ApprovalStatusCard(motoboy: motoboy),
+                  const SizedBox(height: AppSpacing.lg),
+                ],
+
                 // ── Toggle online/offline ─────────────
                 _OnlineToggle(
+                  motoboy: motoboy,
                   isOnline: motoboy.isOnline,
                   isToggling: isToggling,
                   onToggle: onToggle,
@@ -1046,11 +1053,13 @@ class _VehicleCategoryCard extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────
 
 class _OnlineToggle extends StatelessWidget {
+  final MotoboyModel motoboy;
   final bool isOnline;
   final bool isToggling;
   final VoidCallback onToggle;
 
   const _OnlineToggle({
+    required this.motoboy,
     required this.isOnline,
     required this.isToggling,
     required this.onToggle,
@@ -1058,8 +1067,10 @@ class _OnlineToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final canOperate = motoboy.canGoOnline || isOnline;
+
     return GestureDetector(
-      onTap: isToggling ? null : onToggle,
+      onTap: isToggling || !canOperate ? null : onToggle,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
@@ -1172,11 +1183,71 @@ class _OnlineToggle extends StatelessWidget {
                       ),
                       inactiveThumbColor: AppColors.textTertiary,
                       inactiveTrackColor: AppColors.surfaceBorder,
-                      onChanged: (_) => onToggle(),
+                      onChanged: canOperate ? (_) => onToggle() : null,
                     ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ApprovalStatusCard extends StatelessWidget {
+  final MotoboyModel motoboy;
+
+  const _ApprovalStatusCard({required this.motoboy});
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = switch (motoboy.approvalStatus) {
+      MotoboyApprovalStatus.rejected => AppColors.error,
+      MotoboyApprovalStatus.pendingReview => AppColors.warning,
+      _ => AppColors.primary,
+    };
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: accent.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.verified_user_outlined, color: accent, size: 18),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  motoboy.approvalStatus.label,
+                  style: AppTypography.labelLarge.copyWith(color: accent),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            motoboy.rejectionReason?.trim().isNotEmpty == true
+                ? motoboy.rejectionReason!
+                : motoboy.approvalStatus.summary,
+            style: AppTypography.bodySmall.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+          if (motoboy.missingRegistrationItems.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              'Pendências: ${motoboy.missingRegistrationItems.join(', ')}',
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

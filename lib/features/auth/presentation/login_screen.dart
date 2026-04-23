@@ -78,6 +78,80 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
+  Future<void> _showForgotPasswordDialog() async {
+    final emailResetCtrl = TextEditingController(text: _emailCtrl.text);
+    final formKey = GlobalKey<FormState>();
+    bool loading = false;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setStateDialog) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
+          title: Text('Recuperar Senha', style: AppTypography.h3),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Digite seu e-mail para receber um link de redefinição de senha.',
+                  style: AppTypography.bodyMedium,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextFormField(
+                  controller: emailResetCtrl,
+                  decoration: const InputDecoration(labelText: 'E-mail', prefixIcon: Icon(Icons.email_outlined, size: 20)),
+                  validator: Validators.email,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: loading ? null : () => Navigator.pop(ctx),
+              child: Text('Cancelar', style: AppTypography.labelLarge.copyWith(color: AppColors.textSecondary)),
+            ),
+            TextButton(
+              onPressed: loading
+                  ? null
+                  : () async {
+                      if (!formKey.currentState!.validate()) return;
+                      setStateDialog(() => loading = true);
+                      try {
+                        await ref.read(authNotifierProvider.notifier).resetPassword(emailResetCtrl.text.trim());
+                        if (mounted) {
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Um link de recuperação de senha foi enviado para o seu e-mail!'),
+                              backgroundColor: AppColors.primary,
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Erro: $e'),
+                              backgroundColor: AppColors.error,
+                            ),
+                          );
+                        }
+                        setStateDialog(() => loading = false);
+                      }
+                    },
+              child: loading
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : Text('Enviar', style: AppTypography.labelLarge.copyWith(color: AppColors.primary)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isLoading = ref.watch(authNotifierProvider).isLoading;
@@ -189,6 +263,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                         ),
                         validator: Validators.password,
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: _showForgotPasswordDialog,
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 0),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          child: Text(
+                            'Esqueci minha senha?',
+                            style: AppTypography.labelMedium.copyWith(
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),

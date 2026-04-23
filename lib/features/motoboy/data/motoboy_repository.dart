@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../client/domain/delivery_model.dart';
+import '../domain/driver_registration_rules.dart';
 import '../domain/earnings_dashboard.dart';
 import '../domain/motoboy_model.dart';
 
@@ -34,6 +35,11 @@ class MotoboyRepository {
 
   /// Ligar/desligar online (ao ligar, registra last_active_at e reseta nível de inatividade via trigger SQL)
   Future<void> setOnline(String id, bool online) async {
+    if (online) {
+      final motoboy = await fetchMotoboy(id);
+      _ensureApproved(motoboy);
+    }
+
     final now = DateTime.now().toIso8601String();
     await _db
         .from('motoboys')
@@ -52,18 +58,22 @@ class MotoboyRepository {
     required double lng,
     double radiusKm = 10.0,
   }) async {
-    // Buscar categoria do motoboy (com fallback se RLS falhar)
+    // Buscar categoria e aprovação do motoboy (com fallback se RLS falhar)
     String category = 'motoboy';
+    bool isApproved = false;
     try {
       final m = await _db
           .from('motoboys')
-          .select('vehicle_category')
+          .select('vehicle_category, approval_status')
           .eq('id', motoboyId)
           .single();
       category = m['vehicle_category'] as String? ?? 'motoboy';
+      isApproved = m['approval_status'] == 'approved';
     } catch (_) {
       // Se falhar (ex: recursão RLS), segue com default
     }
+
+    if (!isApproved) return [];
 
     // Buscar corridas pendentes
     // Tenta filtrar por categoria; se não houver resultados, busca todas
@@ -241,6 +251,9 @@ class MotoboyRepository {
     required String motoboyId,
     required double commission,
   }) async {
+    final motoboy = await fetchMotoboy(motoboyId);
+    _ensureApproved(motoboy);
+
     // 1. Busca saldo atual
     final m = await _db
         .from('motoboys')
@@ -357,6 +370,32 @@ class MotoboyRepository {
   }
 
   double _toRad(double deg) => deg * pi / 180;
+
+  void _ensureApproved(MotoboyModel motoboy) {
+    if (motoboy.canGoOnline) return;
+
+    String message;
+    switch (motoboy.approvalStatus) {
+      case MotoboyApprovalStatus.pendingDocuments:
+        message = 'Complete o cadastro documental antes de operar.';
+        break;
+      case MotoboyApprovalStatus.pendingReview:
+        message = 'Seu cadastro ainda está em análise. Aguarde a aprovação.';
+        break;
+      case MotoboyApprovalStatus.rejected:
+        message = 'Seu cadastro foi reprovado. Revise os documentos enviados.';
+        break;
+      case MotoboyApprovalStatus.approved:
+        return;
+    }
+
+    final rejectionReason = motoboy.rejectionReason?.trim();
+    if (rejectionReason != null && rejectionReason.isNotEmpty) {
+      message = '$message Motivo: $rejectionReason';
+    }
+
+    throw Exception(message);
+  }
 }
 
 class InsufficientBalanceException implements Exception {

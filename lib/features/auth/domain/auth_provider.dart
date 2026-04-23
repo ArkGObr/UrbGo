@@ -1,11 +1,14 @@
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/services/notification_service.dart';
 import '../data/auth_repository.dart';
 import 'user_model.dart';
 
-final authRepositoryProvider =
-    Provider<AuthRepository>((ref) => AuthRepository());
+final authRepositoryProvider = Provider<AuthRepository>(
+  (ref) => AuthRepository(),
+);
 
 class AuthNotifier extends AsyncNotifier<UserModel?> {
   @override
@@ -45,11 +48,23 @@ class AuthNotifier extends AsyncNotifier<UserModel?> {
     String? vehicleCategory,
     String? vehicleModel,
     int? vehicleYear,
+    String? motoboyCpf,
+    String? cnhNumber,
+    String? cnhCategory,
+    DateTime? cnhExpirationDate,
+    File? identityDocumentFile,
+    File? selfieWithDocumentFile,
+    File? addressProofFile,
+    File? cnhPhotoFile,
+    File? vehicleDocumentFile,
+    File? additionalPermitFile,
   }) async {
     state = const AsyncValue.loading();
 
     final result = await AsyncValue.guard(
-      () => ref.read(authRepositoryProvider).signUp(
+      () => ref
+          .read(authRepositoryProvider)
+          .signUp(
             email: email,
             password: password,
             name: name,
@@ -61,6 +76,16 @@ class AuthNotifier extends AsyncNotifier<UserModel?> {
             vehicleCategory: vehicleCategory,
             vehicleModel: vehicleModel,
             vehicleYear: vehicleYear,
+            motoboyCpf: motoboyCpf,
+            cnhNumber: cnhNumber,
+            cnhCategory: cnhCategory,
+            cnhExpirationDate: cnhExpirationDate,
+            identityDocumentFile: identityDocumentFile,
+            selfieWithDocumentFile: selfieWithDocumentFile,
+            addressProofFile: addressProofFile,
+            cnhPhotoFile: cnhPhotoFile,
+            vehicleDocumentFile: vehicleDocumentFile,
+            additionalPermitFile: additionalPermitFile,
           ),
     );
 
@@ -72,17 +97,13 @@ class AuthNotifier extends AsyncNotifier<UserModel?> {
     }
   }
 
-  Future<void> signIn({
-    required String email,
-    required String password,
-  }) async {
+  Future<void> signIn({required String email, required String password}) async {
     state = const AsyncValue.loading();
 
     final result = await AsyncValue.guard(
-      () => ref.read(authRepositoryProvider).signIn(
-            email: email,
-            password: password,
-          ),
+      () => ref
+          .read(authRepositoryProvider)
+          .signIn(email: email, password: password),
     );
 
     if (result.hasError) {
@@ -91,6 +112,10 @@ class AuthNotifier extends AsyncNotifier<UserModel?> {
       state = result;
       if (result.value != null) _initNotifications(result.value!.id);
     }
+  }
+
+  Future<void> resetPassword(String email) async {
+    await ref.read(authRepositoryProvider).resetPassword(email);
   }
 
   Future<void> signOut() async {
@@ -108,10 +133,11 @@ class AuthNotifier extends AsyncNotifier<UserModel?> {
     notif.saveToken(userId);
     notif.setNavigationCallbacks(
       clientTracking: (id) => '/client/tracking/$id',
-      motoboyActive:  (id) => '/motoboy/active/$id',
+      motoboyActive: (id) => '/motoboy/active/$id',
     );
   }
 }
 
-final authNotifierProvider =
-    AsyncNotifierProvider<AuthNotifier, UserModel?>(AuthNotifier.new);
+final authNotifierProvider = AsyncNotifierProvider<AuthNotifier, UserModel?>(
+  AuthNotifier.new,
+);
