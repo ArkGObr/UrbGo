@@ -6,22 +6,24 @@ class PaymentService {
   late final Dio _dio;
 
   PaymentService() {
-    final supabaseUrl = Supabase.instance.client.rest.url
-        .replaceAll('/rest/v1', '');
+    final supabaseUrl = Supabase.instance.client.rest.url.replaceAll(
+      '/rest/v1',
+      '',
+    );
 
-    _dio = Dio(BaseOptions(
-      baseUrl: '$supabaseUrl/functions/v1',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    ));
+    _dio = Dio(
+      BaseOptions(
+        baseUrl: '$supabaseUrl/functions/v1',
+        headers: {'Content-Type': 'application/json'},
+      ),
+    );
   }
 
   /// Atualiza o header de autorização com o token mais recente
   Map<String, String> get _authHeaders => {
-        'Authorization':
-            'Bearer ${Supabase.instance.client.auth.currentSession?.accessToken}',
-      };
+    'Authorization':
+        'Bearer ${Supabase.instance.client.auth.currentSession?.accessToken}',
+  };
 
   /// Cria cobrança PIX no Asaas (via Edge Function)
   Future<PixChargeResult> createPixCharge({
@@ -30,10 +32,7 @@ class PaymentService {
   }) async {
     final response = await _dio.post(
       '/create-pix-charge',
-      data: {
-        'motoboyId': motoboyId,
-        'amount': amount,
-      },
+      data: {'motoboyId': motoboyId, 'amount': amount},
       options: Options(headers: _authHeaders),
     );
     return PixChargeResult.fromJson(response.data);
@@ -88,10 +87,7 @@ class SimulateRechargeResult {
   final bool success;
   final double newBalance;
 
-  SimulateRechargeResult({
-    required this.success,
-    required this.newBalance,
-  });
+  SimulateRechargeResult({required this.success, required this.newBalance});
 
   factory SimulateRechargeResult.fromJson(Map<String, dynamic> json) {
     return SimulateRechargeResult(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/vehicle_categories.dart';
+import '../../shared/models/motoboy_reputation.dart';
 
 enum DeliveryStatus {
   pending,
@@ -10,44 +11,44 @@ enum DeliveryStatus {
   cancelled;
 
   static DeliveryStatus fromString(String s) => switch (s) {
-        'pending' => pending,
-        'accepted' => accepted,
-        'in_progress' => inProgress,
-        'completed' => completed,
-        _ => cancelled,
-      };
+    'pending' => pending,
+    'accepted' => accepted,
+    'in_progress' => inProgress,
+    'completed' => completed,
+    _ => cancelled,
+  };
 
   String get dbValue => switch (this) {
-        pending => 'pending',
-        accepted => 'accepted',
-        inProgress => 'in_progress',
-        completed => 'completed',
-        cancelled => 'cancelled',
-      };
+    pending => 'pending',
+    accepted => 'accepted',
+    inProgress => 'in_progress',
+    completed => 'completed',
+    cancelled => 'cancelled',
+  };
 
   String get label => switch (this) {
-        pending => 'Aguardando entregador',
-        accepted => 'Entregador a caminho',
-        inProgress => 'Em rota de entrega',
-        completed => 'Entregue',
-        cancelled => 'Cancelado',
-      };
+    pending => 'Aguardando entregador',
+    accepted => 'Entregador a caminho',
+    inProgress => 'Em rota de entrega',
+    completed => 'Entregue',
+    cancelled => 'Cancelado',
+  };
 
   Color get color => switch (this) {
-        pending => AppColors.statusPending,
-        accepted => AppColors.statusAccepted,
-        inProgress => AppColors.statusInProgress,
-        completed => AppColors.statusCompleted,
-        cancelled => AppColors.statusCancelled,
-      };
+    pending => AppColors.statusPending,
+    accepted => AppColors.statusAccepted,
+    inProgress => AppColors.statusInProgress,
+    completed => AppColors.statusCompleted,
+    cancelled => AppColors.statusCancelled,
+  };
 
   IconData get icon => switch (this) {
-        pending => Icons.schedule_rounded,
-        accepted => Icons.two_wheeler_rounded,
-        inProgress => Icons.local_shipping_rounded,
-        completed => Icons.check_circle_rounded,
-        cancelled => Icons.cancel_rounded,
-      };
+    pending => Icons.schedule_rounded,
+    accepted => Icons.two_wheeler_rounded,
+    inProgress => Icons.local_shipping_rounded,
+    completed => Icons.check_circle_rounded,
+    cancelled => Icons.cancel_rounded,
+  };
 }
 
 class DeliveryModel {
@@ -77,6 +78,12 @@ class DeliveryModel {
   final double? motoboyAvgRating;
   final int? motoboyTotalRatings;
   final double? distanceKm;
+  // Parada extra (multi-stop simplificado)
+  final String? extraStopAddress;
+  final double? extraStopLat;
+  final double? extraStopLng;
+  // Foto de confirmação de entrega
+  final String? deliveryPhotoUrl;
 
   const DeliveryModel({
     required this.id,
@@ -104,6 +111,10 @@ class DeliveryModel {
     this.motoboyAvgRating,
     this.motoboyTotalRatings,
     this.distanceKm,
+    this.extraStopAddress,
+    this.extraStopLat,
+    this.extraStopLng,
+    this.deliveryPhotoUrl,
   });
 
   factory DeliveryModel.fromJson(Map<String, dynamic> json) {
@@ -136,10 +147,10 @@ class DeliveryModel {
       completedAt: json['completed_at'] != null
           ? DateTime.parse(json['completed_at'] as String)
           : null,
-      motoboyName: motoboy?['users']?['name'] as String? ??
-          users?['name'] as String?,
-      motoboyPhone: motoboy?['users']?['phone'] as String? ??
-          users?['phone'] as String?,
+      motoboyName:
+          motoboy?['users']?['name'] as String? ?? users?['name'] as String?,
+      motoboyPhone:
+          motoboy?['users']?['phone'] as String? ?? users?['phone'] as String?,
       motoboyPlate: motoboy?['vehicle_plate'] as String?,
       motoboyLat: motoboy != null
           ? (motoboy['current_lat'] as num?)?.toDouble()
@@ -154,6 +165,10 @@ class DeliveryModel {
           ? motoboy['total_ratings'] as int?
           : null,
       distanceKm: (json['distance_km'] as num?)?.toDouble(),
+      extraStopAddress: json['extra_stop_address'] as String?,
+      extraStopLat: (json['extra_stop_lat'] as num?)?.toDouble(),
+      extraStopLng: (json['extra_stop_lng'] as num?)?.toDouble(),
+      deliveryPhotoUrl: json['delivery_photo_url'] as String?,
     );
   }
 
@@ -183,6 +198,10 @@ class DeliveryModel {
     double? motoboyAvgRating,
     int? motoboyTotalRatings,
     double? distanceKm,
+    String? extraStopAddress,
+    double? extraStopLat,
+    double? extraStopLng,
+    String? deliveryPhotoUrl,
   }) {
     return DeliveryModel(
       id: id ?? this.id,
@@ -210,22 +229,44 @@ class DeliveryModel {
       motoboyAvgRating: motoboyAvgRating ?? this.motoboyAvgRating,
       motoboyTotalRatings: motoboyTotalRatings ?? this.motoboyTotalRatings,
       distanceKm: distanceKm ?? this.distanceKm,
+      extraStopAddress: extraStopAddress ?? this.extraStopAddress,
+      extraStopLat: extraStopLat ?? this.extraStopLat,
+      extraStopLng: extraStopLng ?? this.extraStopLng,
+      deliveryPhotoUrl: deliveryPhotoUrl ?? this.deliveryPhotoUrl,
     );
   }
 
   String get paymentMethodLabel => switch (paymentMethod) {
-        'cash' => 'Dinheiro',
-        'pix' => 'PIX',
-        _ => paymentMethod,
-      };
+    'cash' => 'Dinheiro',
+    'pix' => 'PIX',
+    _ => paymentMethod,
+  };
 
   IconData get paymentMethodIcon => switch (paymentMethod) {
-        'cash' => Icons.money_rounded,
-        'pix' => Icons.pix_rounded,
-        _ => Icons.payment_rounded,
-      };
+    'cash' => Icons.money_rounded,
+    'pix' => Icons.pix_rounded,
+    _ => Icons.payment_rounded,
+  };
 
-  bool get canCancel => status == DeliveryStatus.pending;
+  double get netEarnings => value - commission;
+
+  MotoboyReputation get motoboyReputation => MotoboyReputation.fromMetrics(
+    avgRating: motoboyAvgRating ?? 5.0,
+    totalRatings: motoboyTotalRatings ?? 0,
+  );
+
+  // Pode cancelar se pendente, ou se aceito há menos de 5 minutos
+  bool get canCancel {
+    if (status == DeliveryStatus.pending) return true;
+    if (status == DeliveryStatus.accepted && acceptedAt != null) {
+      return DateTime.now().difference(acceptedAt!).inMinutes < 5;
+    }
+    return false;
+  }
+
+  // Indica se o cancelamento tem "custo moral" (aceito dentro da janela)
+  bool get isCancelWithPenaltyWarning =>
+      status == DeliveryStatus.accepted && canCancel;
   bool get isActive =>
       status == DeliveryStatus.pending ||
       status == DeliveryStatus.accepted ||

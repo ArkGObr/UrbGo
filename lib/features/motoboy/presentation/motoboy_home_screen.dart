@@ -55,9 +55,10 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1800),
     )..repeat();
-    _pulseAnimation = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeOut),
-    );
+    _pulseAnimation = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _pulseController, curve: Curves.easeOut));
     _initPosition();
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkActiveDelivery());
   }
@@ -72,7 +73,8 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
           .from('deliveries')
           .select()
           .eq('motoboy_id', user.id)
-          .inFilter('status', ['accepted', 'in_progress']).limit(1);
+          .inFilter('status', ['accepted', 'in_progress'])
+          .limit(1);
 
       if ((data as List).isNotEmpty && mounted) {
         final delivery = DeliveryModel.fromJson(data.first);
@@ -113,15 +115,16 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
 
       // Cancela stream anterior antes de criar um novo
       await _positionSub?.cancel();
-      _positionSub = Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          distanceFilter: 10,
-        ),
-      ).listen((p) {
-        if (!mounted) return;
-        setState(() => _currentPosition = LatLng(p.latitude, p.longitude));
-      });
+      _positionSub =
+          Geolocator.getPositionStream(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.high,
+              distanceFilter: 10,
+            ),
+          ).listen((p) {
+            if (!mounted) return;
+            setState(() => _currentPosition = LatLng(p.latitude, p.longitude));
+          });
     } catch (_) {
       // Fallback: tenta sem timeLimit
       try {
@@ -148,6 +151,14 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
     final user = ref.read(authNotifierProvider).valueOrNull;
     if (user == null) return;
 
+    final connected = await ConnectivityService.ensureConnected(
+      context,
+      message: currentlyOnline
+          ? 'Conecte-se para atualizar seu status.'
+          : 'Conecte-se para entrar online e receber corridas.',
+    );
+    if (!connected || !mounted) return;
+
     setState(() => _isToggling = true);
 
     try {
@@ -168,7 +179,7 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
         }
         await repo.setOnline(user.id, true);
         repo.startLocationUpdates(user.id);
-        
+
         _runsChannel ??= repo.watchAvailableRuns(() async {
           if (!mounted) return;
           // Invalida e força atualização do provider
@@ -249,7 +260,11 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.monetization_on_rounded, size: 80, color: AppColors.primary),
+                  const Icon(
+                    Icons.monetization_on_rounded,
+                    size: 80,
+                    color: AppColors.primary,
+                  ),
                   const SizedBox(height: AppSpacing.md),
                   Text(
                     'NOVA CORRIDA!!!',
@@ -258,7 +273,11 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
                       fontSize: 28,
                       fontWeight: FontWeight.w900,
                       shadows: [
-                        Shadow(color: Colors.black.withOpacity(0.5), blurRadius: 10, offset: const Offset(0, 4)),
+                        Shadow(
+                          color: Colors.black.withValues(alpha: 0.5),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
                       ],
                     ),
                     textAlign: TextAlign.center,
@@ -266,7 +285,9 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
                   const SizedBox(height: AppSpacing.sm),
                   Text(
                     'Você pode faturar agora:\n${CurrencyFormatter.format(value)}',
-                    style: AppTypography.h2.copyWith(color: AppColors.textPrimary),
+                    style: AppTypography.h2.copyWith(
+                      color: AppColors.textPrimary,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: AppSpacing.xl2),
@@ -276,7 +297,9 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primary,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.full)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(AppRadius.full),
+                        ),
                       ),
                       onPressed: () {
                         setState(() => _isShowingModal = false);
@@ -285,7 +308,10 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
                       },
                       child: Text(
                         'ACEITAR AGORA',
-                        style: AppTypography.labelLarge.copyWith(color: AppColors.background, fontSize: 18),
+                        style: AppTypography.labelLarge.copyWith(
+                          color: AppColors.background,
+                          fontSize: 18,
+                        ),
                       ),
                     ),
                   ),
@@ -295,7 +321,12 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
                       setState(() => _isShowingModal = false);
                       Navigator.pop(ctx);
                     },
-                    child: Text('Ignorar', style: AppTypography.labelLarge.copyWith(color: AppColors.textSecondary)),
+                    child: Text(
+                      'Ignorar',
+                      style: AppTypography.labelLarge.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -310,167 +341,174 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
   Widget build(BuildContext context) {
     final motoboyAsync = ref.watch(motoboyStreamProvider);
     final user = ref.watch(authNotifierProvider).valueOrNull;
-    final activeRunAsync =
-        user != null ? ref.watch(activeRunProvider(user.id)) : null;
+    final activeRunAsync = user != null
+        ? ref.watch(activeRunProvider(user.id))
+        : null;
 
     return OfflineBanner(
       child: AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light,
-      child: Scaffold(
-        key: _scaffoldKey,
-        backgroundColor: AppColors.background,
-        drawer: motoboyAsync.valueOrNull != null
-            ? _MotoboyDrawer(
-                motoboy: motoboyAsync.valueOrNull!,
-                userName: (user?.name.trim().isNotEmpty == true) ? user!.name : (motoboyAsync.valueOrNull!.name.isNotEmpty == true ? motoboyAsync.valueOrNull!.name : 'Entregador'),
-                onSignOut: () async {
-                  ref.read(motoboyRepositoryProvider).stopLocationUpdates();
-                  await ref.read(authNotifierProvider.notifier).signOut();
-                },
-                onWallet: () {
-                  Navigator.of(context).pop();
-                  context.push('/motoboy/wallet');
-                },
-                onRuns: () {
-                  Navigator.of(context).pop();
-                  context.push('/motoboy/runs');
-                },
-                onHistory: () {
-                  Navigator.of(context).pop();
-                  context.push('/motoboy/history');
-                },
-                onProfile: () {
-                  Navigator.of(context).pop();
-                  context.push('/motoboy/profile');
-                },
-              )
-            : null,
-        body: motoboyAsync.when(
-          loading: () => const _LoadingBody(),
-          error: (e, _) => _ErrorBody(
-            error: e.toString(),
-            onRetry: () => ref.invalidate(motoboyStreamProvider),
-          ),
-          data: (motoboy) {
-            final activeRun = activeRunAsync?.valueOrNull;
-            final mapCenter = _currentPosition ??
-                (motoboy.currentLat != null && motoboy.currentLng != null
-                    ? LatLng(motoboy.currentLat!, motoboy.currentLng!)
-                    : _kDefaultCenter);
+        value: SystemUiOverlayStyle.light,
+        child: Scaffold(
+          key: _scaffoldKey,
+          backgroundColor: AppColors.background,
+          drawer: motoboyAsync.valueOrNull != null
+              ? _MotoboyDrawer(
+                  motoboy: motoboyAsync.valueOrNull!,
+                  userName: (user?.name.trim().isNotEmpty == true)
+                      ? user!.name
+                      : (motoboyAsync.valueOrNull!.name.isNotEmpty == true
+                            ? motoboyAsync.valueOrNull!.name
+                            : 'Entregador'),
+                  onSignOut: () async {
+                    ref.read(motoboyRepositoryProvider).stopLocationUpdates();
+                    await ref.read(authNotifierProvider.notifier).signOut();
+                  },
+                  onWallet: () {
+                    Navigator.of(context).pop();
+                    context.push('/motoboy/wallet');
+                  },
+                  onRuns: () {
+                    Navigator.of(context).pop();
+                    context.push('/motoboy/runs');
+                  },
+                  onHistory: () {
+                    Navigator.of(context).pop();
+                    context.push('/motoboy/history');
+                  },
+                  onProfile: () {
+                    Navigator.of(context).pop();
+                    context.push('/motoboy/profile');
+                  },
+                )
+              : null,
+          body: motoboyAsync.when(
+            loading: () => const _LoadingBody(),
+            error: (e, _) => _ErrorBody(
+              error: e.toString(),
+              onRetry: () => ref.invalidate(motoboyStreamProvider),
+            ),
+            data: (motoboy) {
+              final activeRun = activeRunAsync?.valueOrNull;
+              final mapCenter =
+                  _currentPosition ??
+                  (motoboy.currentLat != null && motoboy.currentLng != null
+                      ? LatLng(motoboy.currentLat!, motoboy.currentLng!)
+                      : _kDefaultCenter);
 
-            return Stack(
-              children: [
-                // ── Mapa de fundo ─────────────────────────────
-                FlutterMap(
-                  mapController: _mapController,
-                  options: MapOptions(
-                    initialCenter: mapCenter,
-                    initialZoom: 15.0,
-                    interactionOptions: const InteractionOptions(
-                      flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+              return Stack(
+                children: [
+                  // ── Mapa de fundo ─────────────────────────────
+                  FlutterMap(
+                    mapController: _mapController,
+                    options: MapOptions(
+                      initialCenter: mapCenter,
+                      initialZoom: 15.0,
+                      interactionOptions: const InteractionOptions(
+                        flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+                      ),
                     ),
-                  ),
-                  children: [
-                    TileLayer(
-                      urlTemplate: AppConstants.mapTileUrl,
-                      userAgentPackageName: 'com.urbgo.app',
-                      maxZoom: 19,
-                    ),
-                    if (_currentPosition != null)
-                      MarkerLayer(
-                        markers: [
-                          Marker(
-                            point: _currentPosition!,
-                            width: 80,
-                            height: 80,
-                            child: _PulsingMarker(
-                              animation: _pulseAnimation,
-                              isOnline: motoboy.isOnline,
+                    children: [
+                      TileLayer(
+                        urlTemplate: AppConstants.mapTileUrl,
+                        userAgentPackageName: 'com.urbgo.app',
+                        maxZoom: 19,
+                      ),
+                      if (_currentPosition != null)
+                        MarkerLayer(
+                          markers: [
+                            Marker(
+                              point: _currentPosition!,
+                              width: 80,
+                              height: 80,
+                              child: _PulsingMarker(
+                                animation: _pulseAnimation,
+                                isOnline: motoboy.isOnline,
+                              ),
                             ),
+                          ],
+                        ),
+                    ],
+                  ),
+
+                  // ── Gradiente topo (header visibility) ────────
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: 160,
+                    child: IgnorePointer(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.black.withValues(alpha: 0.80),
+                              Colors.transparent,
+                            ],
                           ),
-                        ],
-                      ),
-                  ],
-                ),
-
-                // ── Gradiente topo (header visibility) ────────
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: 160,
-                  child: IgnorePointer(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.black.withValues(alpha: 0.80),
-                            Colors.transparent,
-                          ],
                         ),
                       ),
                     ),
                   ),
-                ),
 
-                // ── Gradiente base (painel visibility) ────────
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  height: 460,
-                  child: IgnorePointer(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.bottomCenter,
-                          end: Alignment.topCenter,
-                          colors: [
-                            Colors.black.withValues(alpha: 0.96),
-                            Colors.transparent,
-                          ],
+                  // ── Gradiente base (painel visibility) ────────
+                  Positioned(
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    height: 460,
+                    child: IgnorePointer(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.bottomCenter,
+                            end: Alignment.topCenter,
+                            colors: [
+                              Colors.black.withValues(alpha: 0.96),
+                              Colors.transparent,
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
 
-                // ── Header flutuante ───────────────────────────
-                Positioned(
-                  top: MediaQuery.of(context).padding.top + 10,
-                  left: AppSpacing.lg,
-                  right: AppSpacing.lg,
-                  child: _FloatingHeader(
-                    scaffoldKey: _scaffoldKey,
-                    isOnline: motoboy.isOnline,
-                    onCenterMap: _centerMap,
+                  // ── Header flutuante ───────────────────────────
+                  Positioned(
+                    top: MediaQuery.of(context).padding.top + 10,
+                    left: AppSpacing.lg,
+                    right: AppSpacing.lg,
+                    child: _FloatingHeader(
+                      scaffoldKey: _scaffoldKey,
+                      isOnline: motoboy.isOnline,
+                      onCenterMap: _centerMap,
+                    ),
                   ),
-                ),
 
-                // ── Painel inferior ────────────────────────────
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: _BottomPanel(
-                    motoboy: motoboy,
-                    isToggling: _isToggling,
-                    onToggle: () => _toggleOnline(motoboy.isOnline),
-                    activeRun: activeRun,
-                    onSeeRuns: () => context.push('/motoboy/runs'),
-                    onContinueRun: (id) =>
-                        context.push('/motoboy/active/$id'),
-                    onWallet: () => context.push('/motoboy/wallet'),
+                  // ── Painel inferior ────────────────────────────
+                  Positioned(
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    child: _BottomPanel(
+                      motoboy: motoboy,
+                      isToggling: _isToggling,
+                      onToggle: () => _toggleOnline(motoboy.isOnline),
+                      activeRun: activeRun,
+                      onSeeRuns: () => context.push('/motoboy/runs'),
+                      onContinueRun: (id) =>
+                          context.push('/motoboy/active/$id'),
+                      onWallet: () => context.push('/motoboy/wallet'),
+                    ),
                   ),
-                ),
-              ],
-            );
-          },
+                ],
+              );
+            },
+          ),
         ),
       ),
-    )); // OfflineBanner
+    ); // OfflineBanner
   }
 }
 
@@ -482,11 +520,8 @@ class _LoadingBody extends StatelessWidget {
   const _LoadingBody();
   @override
   Widget build(BuildContext context) => const Center(
-        child: CircularProgressIndicator(
-          color: AppColors.primary,
-          strokeWidth: 2,
-        ),
-      );
+    child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2),
+  );
 }
 
 class _ErrorBody extends StatelessWidget {
@@ -515,8 +550,9 @@ class _ErrorBody extends StatelessWidget {
               icon: const Icon(Icons.refresh_rounded, color: AppColors.primary),
               label: Text(
                 'Tentar novamente',
-                style: AppTypography.labelLarge
-                    .copyWith(color: AppColors.primary),
+                style: AppTypography.labelLarge.copyWith(
+                  color: AppColors.primary,
+                ),
               ),
             ),
           ],
@@ -571,8 +607,7 @@ class _FloatingHeader extends StatelessWidget {
                   const TextSpan(text: 'Urb'),
                   TextSpan(
                     text: 'Go',
-                    style:
-                        AppTypography.h3.copyWith(color: AppColors.primary),
+                    style: AppTypography.h3.copyWith(color: AppColors.primary),
                   ),
                 ],
               ),
@@ -801,7 +836,16 @@ class _BottomPanel extends StatelessWidget {
                   const SizedBox(height: AppSpacing.md),
                   PrimaryButton(
                     label: 'Ver Corridas Disponíveis',
-                    onPressed: onSeeRuns,
+                    onPressed: () async {
+                      final connected =
+                          await ConnectivityService.ensureConnected(
+                            context,
+                            message:
+                                'Conecte-se para carregar corridas disponíveis.',
+                          );
+                      if (!connected || !context.mounted) return;
+                      onSeeRuns();
+                    },
                   ),
                 ],
 
@@ -811,6 +855,10 @@ class _BottomPanel extends StatelessWidget {
                   _ActiveRunCard(
                     delivery: activeRun!,
                     onContinue: () => onContinueRun(activeRun!.id),
+                    onChat: () {
+                      final name = Uri.encodeComponent('Cliente');
+                      context.push('/motoboy/chat/${activeRun!.id}?name=$name');
+                    },
                   ),
                 ],
 
@@ -839,8 +887,9 @@ class _GreetingRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final firstName =
-        motoboy.name.isNotEmpty ? motoboy.name.split(' ').first : 'Entregador';
+    final firstName = motoboy.name.isNotEmpty
+        ? motoboy.name.split(' ').first
+        : 'Entregador';
 
     return Row(
       children: [
@@ -1118,8 +1167,9 @@ class _OnlineToggle extends StatelessWidget {
                       key: const ValueKey('switch'),
                       value: isOnline,
                       activeThumbColor: AppColors.primary,
-                      activeTrackColor:
-                          AppColors.primary.withValues(alpha: 0.28),
+                      activeTrackColor: AppColors.primary.withValues(
+                        alpha: 0.28,
+                      ),
                       inactiveThumbColor: AppColors.textTertiary,
                       inactiveTrackColor: AppColors.surfaceBorder,
                       onChanged: (_) => onToggle(),
@@ -1139,8 +1189,13 @@ class _OnlineToggle extends StatelessWidget {
 class _ActiveRunCard extends StatelessWidget {
   final DeliveryModel delivery;
   final VoidCallback onContinue;
+  final VoidCallback onChat;
 
-  const _ActiveRunCard({required this.delivery, required this.onContinue});
+  const _ActiveRunCard({
+    required this.delivery,
+    required this.onContinue,
+    required this.onChat,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1150,9 +1205,7 @@ class _ActiveRunCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.surfaceHigh,
         borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(
-          color: AppColors.primary.withValues(alpha: 0.55),
-        ),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.55)),
         boxShadow: [
           BoxShadow(
             color: AppColors.primary.withValues(alpha: 0.05),
@@ -1178,8 +1231,9 @@ class _ActiveRunCard extends StatelessWidget {
               const SizedBox(width: AppSpacing.sm),
               Text(
                 'Corrida em andamento',
-                style: AppTypography.labelLarge
-                    .copyWith(color: AppColors.primary),
+                style: AppTypography.labelLarge.copyWith(
+                  color: AppColors.primary,
+                ),
               ),
               const Spacer(),
               Container(
@@ -1232,9 +1286,30 @@ class _ActiveRunCard extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.lg),
 
-          PrimaryButton(
-            label: 'Continuar Entrega',
-            onPressed: onContinue,
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onChat,
+                  icon: const Icon(Icons.chat_bubble_outline_rounded, size: 16),
+                  label: const Text('Chat'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    side: const BorderSide(color: AppColors.primary),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    textStyle: AppTypography.labelLarge,
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                flex: 2,
+                child: PrimaryButton(
+                  label: 'Continuar Entrega',
+                  onPressed: onContinue,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -1274,10 +1349,7 @@ class _AddressLine extends StatelessWidget {
                     color: AppColors.textTertiary,
                   ),
                 ),
-                TextSpan(
-                  text: address,
-                  style: AppTypography.bodySmall,
-                ),
+                TextSpan(text: address, style: AppTypography.bodySmall),
               ],
             ),
           ),
@@ -1312,8 +1384,7 @@ class _MotoboyDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initial =
-        userName.isNotEmpty ? userName[0].toUpperCase() : 'M';
+    final initial = userName.isNotEmpty ? userName[0].toUpperCase() : 'M';
 
     return Drawer(
       width: MediaQuery.of(context).size.width * 0.78,
@@ -1335,96 +1406,111 @@ class _MotoboyDrawer extends StatelessWidget {
               bottom: false,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.xl, AppSpacing.lg, AppSpacing.xl, AppSpacing.xl),
+                  AppSpacing.xl,
+                  AppSpacing.lg,
+                  AppSpacing.xl,
+                  AppSpacing.xl,
+                ),
                 child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Avatar + Nome + Categoria
-                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryDeep,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: AppColors.primary.withValues(alpha: 0.5),
-                          width: 2,
-                        ),
-                        image: motoboy.avatarUrl != null && motoboy.avatarUrl!.isNotEmpty
-                            ? DecorationImage(
-                                image: NetworkImage(motoboy.avatarUrl!),
-                                fit: BoxFit.cover,
-                              )
-                            : null,
-                      ),
-                      child: motoboy.avatarUrl == null || motoboy.avatarUrl!.isEmpty
-                          ? Center(
-                              child: Text(
-                                initial,
-                                style: AppTypography.h3.copyWith(color: AppColors.primary),
-                              ),
-                            )
-                          : null,
-                    ),
-                    const SizedBox(width: AppSpacing.md),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            userName,
-                            style: AppTypography.h4,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                    // Avatar + Nome + Categoria
+                    Row(
+                      children: [
+                        Container(
+                          width: 52,
+                          height: 52,
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryDeep,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: AppColors.primary.withValues(alpha: 0.5),
+                              width: 2,
+                            ),
+                            image:
+                                motoboy.avatarUrl != null &&
+                                    motoboy.avatarUrl!.isNotEmpty
+                                ? DecorationImage(
+                                    image: NetworkImage(motoboy.avatarUrl!),
+                                    fit: BoxFit.cover,
+                                  )
+                                : null,
                           ),
-                          const SizedBox(height: 2),
-                          Row(
-                            children: [
-                              Icon(
-                                motoboy.vehicleCategory.info.icon,
-                                size: 14,
-                                color: AppColors.primary,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                motoboy.vehicleCategory.info.name,
-                                style: AppTypography.bodySmall.copyWith(
-                                  color: AppColors.primary,
-                                ),
-                              ),
-                              if (motoboy.vehiclePlate != null) ...[
-                                const SizedBox(width: 8),
-                                Text(
-                                  '·  ${motoboy.vehiclePlate!}',
-                                  style: AppTypography.bodySmall.copyWith(
-                                    color: AppColors.textTertiary,
-                                    letterSpacing: 0.8,
+                          child:
+                              motoboy.avatarUrl == null ||
+                                  motoboy.avatarUrl!.isEmpty
+                              ? Center(
+                                  child: Text(
+                                    initial,
+                                    style: AppTypography.h3.copyWith(
+                                      color: AppColors.primary,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                )
+                              : null,
+                        ),
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                userName,
+                                style: AppTypography.h4,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Icon(
+                                    motoboy.vehicleCategory.info.icon,
+                                    size: 14,
+                                    color: AppColors.primary,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    motoboy.vehicleCategory.info.name,
+                                    style: AppTypography.bodySmall.copyWith(
+                                      color: AppColors.primary,
+                                    ),
+                                  ),
+                                  if (motoboy.vehiclePlate != null) ...[
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      '·  ${motoboy.vehiclePlate!}',
+                                      style: AppTypography.bodySmall.copyWith(
+                                        color: AppColors.textTertiary,
+                                        letterSpacing: 0.8,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
                             ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ],
-                ),
-              ],
-            ),   // Column
-          ),     // Padding
-        ),       // SafeArea
-        ),       // Container (header)
-
+                ), // Column
+              ), // Padding
+            ), // SafeArea
+          ), // Container (header)
           // ── Saldo rápido ─────────────────────────
           GestureDetector(
             onTap: onWallet,
             child: Container(
               margin: const EdgeInsets.fromLTRB(
-                  AppSpacing.xl, AppSpacing.lg, AppSpacing.xl, 0),
+                AppSpacing.xl,
+                AppSpacing.lg,
+                AppSpacing.xl,
+                0,
+              ),
               padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+                horizontal: AppSpacing.lg,
+                vertical: AppSpacing.md,
+              ),
               decoration: BoxDecoration(
                 color: AppColors.primaryDeep,
                 borderRadius: BorderRadius.circular(AppRadius.md),
@@ -1452,8 +1538,9 @@ class _MotoboyDrawer extends StatelessWidget {
                         ),
                         Text(
                           CurrencyFormatter.format(motoboy.walletBalance),
-                          style: AppTypography.numericLarge
-                              .copyWith(color: AppColors.primary),
+                          style: AppTypography.numericLarge.copyWith(
+                            color: AppColors.primary,
+                          ),
                         ),
                       ],
                     ),

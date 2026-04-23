@@ -42,7 +42,8 @@ class RouteService {
   /// Retorna a rota real da API OSRM, ou estimativa local se falhar.
   Future<RouteResult> getRouteWithInfo(LatLng from, LatLng to) async {
     try {
-      final url = 'https://router.project-osrm.org/route/v1/driving/'
+      final url =
+          'https://router.project-osrm.org/route/v1/driving/'
           '${from.longitude},${from.latitude};'
           '${to.longitude},${to.latitude}?geometries=geojson&overview=full';
 
@@ -56,22 +57,26 @@ class RouteService {
 
       if (response.statusCode == 200) {
         final data = response.data;
-        if (data['code'] == 'Ok' && data['routes'] != null && data['routes'].isNotEmpty) {
+        if (data['code'] == 'Ok' &&
+            data['routes'] != null &&
+            data['routes'].isNotEmpty) {
           final route = data['routes'][0];
-          
+
           final distanceMeters = (route['distance'] as num).toDouble();
           final durationSecs = (route['duration'] as num).toInt();
-          
+
           final geometry = route['geometry'];
           final coordinates = geometry['coordinates'] as List<dynamic>;
-          
+
           final points = coordinates.map((coord) {
             final lng = (coord[0] as num).toDouble();
             final lat = (coord[1] as num).toDouble();
             return LatLng(lat, lng);
           }).toList();
 
-          debugPrint('[RouteService] Rota do OSRM carregada com sucesso: ${(distanceMeters / 1000).toStringAsFixed(2)} km');
+          debugPrint(
+            '[RouteService] Rota do OSRM carregada com sucesso: ${(distanceMeters / 1000).toStringAsFixed(2)} km',
+          );
 
           return RouteResult(
             points: points,
@@ -81,7 +86,9 @@ class RouteService {
         }
       }
     } catch (e) {
-      debugPrint('[RouteService] Erro no OSRM: $e - caindo para estimativa local');
+      debugPrint(
+        '[RouteService] Erro no OSRM: $e - caindo para estimativa local',
+      );
     }
 
     return _estimateRoute(from, to);
@@ -91,6 +98,42 @@ class RouteService {
   Future<List<LatLng>> getRoute(LatLng from, LatLng to) async {
     final result = await getRouteWithInfo(from, to);
     return result.points;
+  }
+
+  /// Calcula uma rota com múltiplos pontos, concatenando os trechos.
+  Future<RouteResult> getRouteWithStops(List<LatLng> stops) async {
+    if (stops.isEmpty) {
+      return const RouteResult(points: [], distanceKm: 0, durationSeconds: 0);
+    }
+    if (stops.length == 1) {
+      return RouteResult(
+        points: [stops.first],
+        distanceKm: 0,
+        durationSeconds: 0,
+      );
+    }
+
+    final combinedPoints = <LatLng>[];
+    var totalDistanceKm = 0.0;
+    var totalDurationSeconds = 0;
+
+    for (var i = 0; i < stops.length - 1; i++) {
+      final segment = await getRouteWithInfo(stops[i], stops[i + 1]);
+      totalDistanceKm += segment.distanceKm;
+      totalDurationSeconds += segment.durationSeconds;
+
+      if (combinedPoints.isEmpty) {
+        combinedPoints.addAll(segment.points);
+      } else if (segment.points.isNotEmpty) {
+        combinedPoints.addAll(segment.points.skip(1));
+      }
+    }
+
+    return RouteResult(
+      points: combinedPoints,
+      distanceKm: totalDistanceKm,
+      durationSeconds: totalDurationSeconds,
+    );
   }
 
   RouteResult _estimateRoute(LatLng from, LatLng to) {

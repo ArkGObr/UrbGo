@@ -48,7 +48,8 @@ class _ClientHomeScreenState extends ConsumerState<ClientHomeScreen> {
       if (perm == LocationPermission.whileInUse ||
           perm == LocationPermission.always) {
         final pos = await Geolocator.getCurrentPosition(
-            desiredAccuracy: LocationAccuracy.medium);
+          desiredAccuracy: LocationAccuracy.medium,
+        );
         if (mounted) {
           setState(() {
             _currentPosition = LatLng(pos.latitude, pos.longitude);
@@ -64,7 +65,12 @@ class _ClientHomeScreenState extends ConsumerState<ClientHomeScreen> {
     }
   }
 
-  void _onCategorySelected(VehicleCategoryInfo cat) {
+  Future<void> _onCategorySelected(VehicleCategoryInfo cat) async {
+    final connected = await ConnectivityService.ensureConnected(
+      context,
+      message: 'Conecte-se à internet para criar uma entrega.',
+    );
+    if (!connected || !mounted) return;
     context.push('/client/create', extra: cat);
   }
 
@@ -93,9 +99,7 @@ class _ClientHomeScreenState extends ConsumerState<ClientHomeScreen> {
                   },
                   onSignOut: () async {
                     Navigator.of(context).pop();
-                    await ref
-                        .read(authNotifierProvider.notifier)
-                        .signOut();
+                    await ref.read(authNotifierProvider.notifier).signOut();
                   },
                 )
               : null,
@@ -126,8 +130,10 @@ class _ClientHomeScreenState extends ConsumerState<ClientHomeScreen> {
                               decoration: BoxDecoration(
                                 color: const Color(0xFF2196F3),
                                 shape: BoxShape.circle,
-                                border:
-                                    Border.all(color: Colors.white, width: 3),
+                                border: Border.all(
+                                  color: Colors.white,
+                                  width: 3,
+                                ),
                                 boxShadow: const [
                                   BoxShadow(
                                     color: Colors.black26,
@@ -155,14 +161,15 @@ class _ClientHomeScreenState extends ConsumerState<ClientHomeScreen> {
                     // Botão de menu → abre drawer
                     _FloatingIconButton(
                       icon: Icons.menu_rounded,
-                      onPressed: () =>
-                          _scaffoldKey.currentState?.openDrawer(),
+                      onPressed: () => _scaffoldKey.currentState?.openDrawer(),
                     ),
 
                     // Logo central
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: AppSpacing.md, vertical: 8),
+                        horizontal: AppSpacing.md,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.surface,
                         borderRadius: BorderRadius.circular(AppRadius.full),
@@ -191,12 +198,12 @@ class _ClientHomeScreenState extends ConsumerState<ClientHomeScreen> {
                                 TextSpan(
                                   text: 'Urb',
                                   style: TextStyle(
-                                      color: AppColors.textPrimary),
+                                    color: AppColors.textPrimary,
+                                  ),
                                 ),
                                 TextSpan(
                                   text: 'Go',
-                                  style:
-                                      TextStyle(color: AppColors.primary),
+                                  style: TextStyle(color: AppColors.primary),
                                 ),
                               ],
                             ),
@@ -209,8 +216,7 @@ class _ClientHomeScreenState extends ConsumerState<ClientHomeScreen> {
                     _FloatingIconButton(
                       icon: Icons.my_location_rounded,
                       iconColor: AppColors.primary,
-                      onPressed:
-                          _isLoadingLocation ? null : _getUserLocation,
+                      onPressed: _isLoadingLocation ? null : _getUserLocation,
                     ),
                   ],
                 ),
@@ -234,8 +240,9 @@ class _ClientHomeScreenState extends ConsumerState<ClientHomeScreen> {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.background,
-        borderRadius:
-            const BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(AppRadius.xl),
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.1),
@@ -263,10 +270,16 @@ class _ClientHomeScreenState extends ConsumerState<ClientHomeScreen> {
 
             // Barra de busca
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
               child: GestureDetector(
-                onTap: () => context.push('/client/create'),
+                onTap: () async {
+                  final connected = await ConnectivityService.ensureConnected(
+                    context,
+                    message: 'Conecte-se à internet para criar uma entrega.',
+                  );
+                  if (!connected || !mounted) return;
+                  context.push('/client/create');
+                },
                 child: Container(
                   padding: const EdgeInsets.all(AppSpacing.md),
                   decoration: BoxDecoration(
@@ -275,8 +288,11 @@ class _ClientHomeScreenState extends ConsumerState<ClientHomeScreen> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.location_on_rounded,
-                          color: AppColors.primary, size: 24),
+                      const Icon(
+                        Icons.location_on_rounded,
+                        color: AppColors.primary,
+                        size: 24,
+                      ),
                       const SizedBox(width: AppSpacing.md),
                       Text(
                         'Para onde vamos?',
@@ -293,18 +309,15 @@ class _ClientHomeScreenState extends ConsumerState<ClientHomeScreen> {
 
             // Categorias
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text('Escolha uma categoria',
-                    style: AppTypography.h4),
+                child: Text('Escolha uma categoria', style: AppTypography.h4),
               ),
             ),
             const SizedBox(height: AppSpacing.md),
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
               child: CategorySelectorWidget(
                 isForDriver: false,
                 onSelected: _onCategorySelected,
@@ -315,8 +328,9 @@ class _ClientHomeScreenState extends ConsumerState<ClientHomeScreen> {
             // Entregas em andamento
             deliveriesAsync.when(
               data: (deliveries) {
-                final active =
-                    (deliveries as List).where((d) => d.isActive).toList();
+                final active = (deliveries as List)
+                    .where((d) => d.isActive)
+                    .toList();
                 if (active.isEmpty) return const SizedBox.shrink();
 
                 return Column(
@@ -324,24 +338,40 @@ class _ClientHomeScreenState extends ConsumerState<ClientHomeScreen> {
                   children: [
                     Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: AppSpacing.lg),
+                        horizontal: AppSpacing.lg,
+                      ),
                       child: Text('Em andamento', style: AppTypography.h4),
                     ),
                     const SizedBox(height: AppSpacing.sm),
                     SizedBox(
-                      height: 240,
+                      height: 232,
                       child: ListView.separated(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: AppSpacing.lg),
+                          horizontal: AppSpacing.lg,
+                        ),
                         scrollDirection: Axis.horizontal,
                         itemCount: active.length,
                         separatorBuilder: (_, __) =>
                             const SizedBox(width: AppSpacing.md),
                         itemBuilder: (_, i) => SizedBox(
-                          width: MediaQuery.of(context).size.width -
+                          width:
+                              MediaQuery.of(context).size.width -
                               (AppSpacing.lg * 2),
                           child: DeliveryCard(
-                              delivery: active[i], index: i),
+                            delivery: active[i],
+                            index: i,
+                            compact: true,
+                            onChatTap: active[i].motoboyId == null
+                                ? null
+                                : () {
+                                    final name = Uri.encodeComponent(
+                                      active[i].motoboyName ?? 'Entregador',
+                                    );
+                                    context.push(
+                                      '/client/chat/${active[i].id}?name=$name',
+                                    );
+                                  },
+                          ),
                         ),
                       ),
                     ),
@@ -419,8 +449,7 @@ class _ClientDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initial =
-        user.name.isNotEmpty ? user.name[0].toUpperCase() : 'C';
+    final initial = user.name.isNotEmpty ? user.name[0].toUpperCase() : 'C';
 
     return Drawer(
       width: MediaQuery.of(context).size.width * 0.78,
@@ -440,10 +469,11 @@ class _ClientDrawer extends StatelessWidget {
               bottom: false,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.xl,
-                    AppSpacing.lg,
-                    AppSpacing.xl,
-                    AppSpacing.xl),
+                  AppSpacing.xl,
+                  AppSpacing.lg,
+                  AppSpacing.xl,
+                  AppSpacing.xl,
+                ),
                 child: Row(
                   children: [
                     // Avatar
@@ -457,21 +487,21 @@ class _ClientDrawer extends StatelessWidget {
                           color: AppColors.primary.withValues(alpha: 0.5),
                           width: 2,
                         ),
-                        image: user.avatarUrl != null &&
-                                user.avatarUrl!.isNotEmpty
+                        image:
+                            user.avatarUrl != null && user.avatarUrl!.isNotEmpty
                             ? DecorationImage(
                                 image: NetworkImage(user.avatarUrl!),
                                 fit: BoxFit.cover,
                               )
                             : null,
                       ),
-                      child: user.avatarUrl == null ||
-                              user.avatarUrl!.isEmpty
+                      child: user.avatarUrl == null || user.avatarUrl!.isEmpty
                           ? Center(
                               child: Text(
                                 initial,
-                                style: AppTypography.h3
-                                    .copyWith(color: AppColors.primary),
+                                style: AppTypography.h3.copyWith(
+                                  color: AppColors.primary,
+                                ),
                               ),
                             )
                           : null,

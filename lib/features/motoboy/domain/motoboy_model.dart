@@ -1,4 +1,5 @@
 import '../../../core/constants/vehicle_categories.dart';
+import '../../shared/models/motoboy_reputation.dart';
 
 class MotoboyModel {
   final String id;
@@ -107,4 +108,9 @@ class MotoboyModel {
     if (totalRatings == 0) return 'Novo';
     return avgRating.toStringAsFixed(1);
   }
+
+  MotoboyReputation get reputation => MotoboyReputation.fromMetrics(
+    avgRating: avgRating,
+    totalRatings: totalRatings,
+  );
 }

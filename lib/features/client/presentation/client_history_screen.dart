@@ -5,6 +5,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/utils/currency_formatter.dart';
+import '../../auth/domain/auth_provider.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/error_state.dart';
 import '../../shared/widgets/vehicle_badge.dart';
@@ -21,16 +22,89 @@ class ClientHistoryScreen extends ConsumerStatefulWidget {
 }
 
 class _ClientHistoryScreenState extends ConsumerState<ClientHistoryScreen> {
+  static const _pageSize = 20;
+
+  final List<DeliveryModel> _deliveries = [];
+  bool _isLoading = true;
+  bool _isLoadingMore = false;
+  bool _hasMore = true;
+  Object? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInitial();
+  }
+
+  Future<void> _loadInitial() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+      _hasMore = true;
+      _deliveries.clear();
+    });
+    await _loadPage(reset: true);
+  }
+
+  Future<void> _loadMore() async {
+    if (_isLoadingMore || _isLoading || !_hasMore) return;
+    setState(() => _isLoadingMore = true);
+    await _loadPage();
+  }
+
+  Future<void> _loadPage({bool reset = false}) async {
+    final user = ref.read(authNotifierProvider).valueOrNull;
+    if (user == null) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _isLoadingMore = false;
+        _hasMore = false;
+      });
+      return;
+    }
+
+    try {
+      final page = await ref
+          .read(deliveryRepositoryProvider)
+          .getClientHistoryPage(
+            clientId: user.id,
+            offset: reset ? 0 : _deliveries.length,
+            limit: _pageSize,
+          );
+      if (!mounted) return;
+      setState(() {
+        if (reset) {
+          _deliveries
+            ..clear()
+            ..addAll(page);
+        } else {
+          _deliveries.addAll(page);
+        }
+        _hasMore = page.length == _pageSize;
+        _isLoading = false;
+        _isLoadingMore = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e;
+        _isLoading = false;
+        _isLoadingMore = false;
+      });
+    }
+  }
+
   Future<void> _rate(DeliveryModel delivery) async {
     await RatingBottomSheet.show(context, ref, delivery);
     if (!mounted) return;
     ref.invalidate(clientRatingsProvider);
-    ref.invalidate(clientHistoryProvider);
+    await _loadInitial();
   }
 
   @override
   Widget build(BuildContext context) {
-    final historyAsync = ref.watch(clientHistoryProvider);
     final ratingsAsync = ref.watch(clientRatingsProvider);
 
     return Scaffold(
@@ -46,58 +120,88 @@ class _ClientHistoryScreenState extends ConsumerState<ClientHistoryScreen> {
           child: Divider(height: 1, color: AppColors.surfaceBorder),
         ),
       ),
-      body: historyAsync.when(
-        loading: () => const Center(
-          child: CircularProgressIndicator(color: AppColors.primary),
-        ),
-        error: (_, __) => ErrorState(
-          message: 'Erro ao carregar histórico',
-          onRetry: () => ref.invalidate(clientHistoryProvider),
-        ),
-        data: (deliveries) {
-          if (deliveries.isEmpty) {
-            return const EmptyState(
-              icon: Icons.receipt_long_rounded,
-              title: 'Nenhuma entrega ainda',
-              subtitle:
-                  'Seu histórico de entregas concluídas aparecerá aqui.',
-            );
+      body: _buildBody(ratingsAsync.valueOrNull ?? {}),
+    );
+  }
+
+  Widget _buildBody(Map<String, int> ratings) {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.primary),
+      );
+    }
+
+    if (_error != null && _deliveries.isEmpty) {
+      return ErrorState(
+        message: 'Erro ao carregar histórico',
+        onRetry: _loadInitial,
+      );
+    }
+
+    if (_deliveries.isEmpty) {
+      return const EmptyState(
+        icon: Icons.receipt_long_rounded,
+        title: 'Nenhuma entrega ainda',
+        subtitle: 'Seu histórico de entregas concluídas aparecerá aqui.',
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        ref.invalidate(clientRatingsProvider);
+        await _loadInitial();
+      },
+      color: AppColors.primary,
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          if (notification.metrics.pixels >=
+              notification.metrics.maxScrollExtent - 200) {
+            _loadMore();
           }
-
-          final ratings = ratingsAsync.valueOrNull ?? {};
-
-          return RefreshIndicator(
-            onRefresh: () async {
-              ref.invalidate(clientHistoryProvider);
-              ref.invalidate(clientRatingsProvider);
-            },
-            color: AppColors.primary,
-            child: ListView.separated(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              itemCount: deliveries.length,
-              separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
-              itemBuilder: (_, i) {
-                final d = deliveries[i];
-                final userRating = ratings[d.id];
-                return _HistoryCard(
-                  delivery: d,
-                  userRating: userRating,
-                  onRate: d.status == DeliveryStatus.completed &&
-                          userRating == null &&
-                          d.motoboyId != null
-                      ? () => _rate(d)
-                      : null,
-                );
-              },
-            ),
-          );
+          return false;
         },
+        child: ListView.separated(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          itemCount: _deliveries.length + (_isLoadingMore || _hasMore ? 1 : 0),
+          separatorBuilder: (_, index) => index >= _deliveries.length - 1
+              ? const SizedBox.shrink()
+              : const SizedBox(height: AppSpacing.sm),
+          itemBuilder: (_, i) {
+            if (i >= _deliveries.length) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+                child: Center(
+                  child: _isLoadingMore
+                      ? const CircularProgressIndicator(
+                          color: AppColors.primary,
+                        )
+                      : Text(
+                          'Role para carregar mais',
+                          style: AppTypography.bodySmall,
+                        ),
+                ),
+              );
+            }
+
+            final d = _deliveries[i];
+            final userRating = ratings[d.id];
+            return _HistoryCard(
+              delivery: d,
+              userRating: userRating,
+              onRate:
+                  d.status == DeliveryStatus.completed &&
+                      userRating == null &&
+                      d.motoboyId != null
+                  ? () => _rate(d)
+                  : null,
+            );
+          },
+        ),
       ),
     );
   }
 }
 
-// ── Card de histórico ─────────────────────────────────────────
 class _HistoryCard extends StatelessWidget {
   final DeliveryModel delivery;
   final int? userRating;
@@ -112,15 +216,10 @@ class _HistoryCard extends StatelessWidget {
     'Excelente',
   ];
 
-  const _HistoryCard({
-    required this.delivery,
-    this.userRating,
-    this.onRate,
-  });
+  const _HistoryCard({required this.delivery, this.userRating, this.onRate});
 
   @override
   Widget build(BuildContext context) {
-    // Local var para Dart poder promover int? → int em closures
     final rating = userRating;
 
     return Container(
@@ -134,19 +233,13 @@ class _HistoryCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Faixa lateral colorida por status
-            Container(
-              width: 4,
-              color: delivery.status.color,
-            ),
-            // Conteúdo
+            Container(width: 4, color: delivery.status.color),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.all(AppSpacing.lg),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Status + valor
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -168,13 +261,26 @@ class _HistoryCard extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: AppSpacing.md),
-
-                    // Endereço de coleta
                     _AddressRow(
                       icon: Icons.radio_button_on_rounded,
                       iconColor: AppColors.primary,
                       address: delivery.pickupAddress,
                     ),
+                    if (delivery.extraStopAddress != null) ...[
+                      Padding(
+                        padding: const EdgeInsets.only(left: 9),
+                        child: Container(
+                          width: 1.5,
+                          height: 14,
+                          color: AppColors.surfaceBorder,
+                        ),
+                      ),
+                      _AddressRow(
+                        icon: Icons.add_location_alt_rounded,
+                        iconColor: const Color(0xFFFF9800),
+                        address: delivery.extraStopAddress!,
+                      ),
+                    ],
                     Padding(
                       padding: const EdgeInsets.only(left: 9),
                       child: Container(
@@ -183,15 +289,12 @@ class _HistoryCard extends StatelessWidget {
                         color: AppColors.surfaceBorder,
                       ),
                     ),
-                    // Endereço de entrega
                     _AddressRow(
                       icon: Icons.location_on_rounded,
                       iconColor: AppColors.error,
                       address: delivery.deliveryAddress,
                     ),
                     const SizedBox(height: AppSpacing.md),
-
-                    // Rodapé: entregador + pagamento + data
                     Row(
                       children: [
                         if (delivery.motoboyName != null) ...[
@@ -216,14 +319,11 @@ class _HistoryCard extends StatelessWidget {
                         ),
                       ],
                     ),
-
-                    // Seção de avaliação (apenas entregas concluídas)
                     if (delivery.status == DeliveryStatus.completed) ...[
                       const SizedBox(height: AppSpacing.sm),
                       const Divider(color: AppColors.surfaceBorder, height: 1),
                       const SizedBox(height: AppSpacing.sm),
                       if (rating != null)
-                        // Já avaliado: mostra a nota que o cliente deu
                         Row(
                           children: [
                             ...List.generate(
@@ -248,13 +348,13 @@ class _HistoryCard extends StatelessWidget {
                           ],
                         )
                       else if (onRate != null)
-                        // Ainda não avaliado: botão de avaliação
                         GestureDetector(
                           onTap: onRate,
                           behavior: HitTestBehavior.opaque,
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
-                                vertical: AppSpacing.xs),
+                              vertical: AppSpacing.xs,
+                            ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -302,7 +402,6 @@ class _HistoryCard extends StatelessWidget {
   }
 }
 
-// ── Status Badge ──────────────────────────────────────────────
 class _StatusBadge extends StatelessWidget {
   final DeliveryStatus status;
 
@@ -318,8 +417,10 @@ class _StatusBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: status.color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(AppRadius.full),
-        border:
-            Border.all(color: status.color.withValues(alpha: 0.3), width: 0.5),
+        border: Border.all(
+          color: status.color.withValues(alpha: 0.3),
+          width: 0.5,
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -340,7 +441,6 @@ class _StatusBadge extends StatelessWidget {
   }
 }
 
-// ── Address Row ───────────────────────────────────────────────
 class _AddressRow extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
@@ -362,7 +462,7 @@ class _AddressRow extends StatelessWidget {
         Expanded(
           child: Text(
             address,
-            style: AppTypography.bodySmall.copyWith(
+            style: AppTypography.bodyMedium.copyWith(
               color: AppColors.textPrimary,
             ),
             maxLines: 2,

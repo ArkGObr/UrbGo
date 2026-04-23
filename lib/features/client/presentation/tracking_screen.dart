@@ -12,6 +12,7 @@ import '../../../core/constants/vehicle_categories.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/widgets/app_toast.dart';
 import '../../../core/services/route_service.dart';
+import '../../../core/services/notification_service.dart';
 import '../../shared/widgets/primary_button.dart';
 import '../../shared/widgets/vehicle_badge.dart';
 import '../data/rating_repository.dart';
@@ -19,6 +20,8 @@ import '../domain/client_providers.dart';
 import '../domain/delivery_model.dart';
 import 'widgets/rating_bottom_sheet.dart';
 
+// Provider local para ETA em tempo real (motoboy → próximo destino)
+final _etaProvider = StateProvider<String?>((ref) => null);
 
 class TrackingScreen extends ConsumerStatefulWidget {
   final String deliveryId;
@@ -45,6 +48,11 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   bool _hasShownRating = false;
   bool _hasCheckedInitialRating = false;
 
+  final RouteService _routeService = RouteService();
+  DateTime? _lastEtaFetch;
+  String? _routeCacheKey;
+  bool _hasShownPickupArrival = false;
+
   @override
   void initState() {
     super.initState();
@@ -58,12 +66,16 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
 
   void _animateMotoboyTo(LatLng newPos) {
     final from = _motoboyTo ?? newPos;
-    _motoboyTo   = newPos;
+    _motoboyTo = newPos;
 
-    _latAnim = Tween<double>(begin: from.latitude,  end: newPos.latitude)
-        .animate(CurvedAnimation(parent: _motoboyAnimCtrl, curve: Curves.easeInOut));
+    _latAnim = Tween<double>(begin: from.latitude, end: newPos.latitude)
+        .animate(
+          CurvedAnimation(parent: _motoboyAnimCtrl, curve: Curves.easeInOut),
+        );
     _lngAnim = Tween<double>(begin: from.longitude, end: newPos.longitude)
-        .animate(CurvedAnimation(parent: _motoboyAnimCtrl, curve: Curves.easeInOut));
+        .animate(
+          CurvedAnimation(parent: _motoboyAnimCtrl, curve: Curves.easeInOut),
+        );
 
     _motoboyAnimCtrl.forward(from: 0);
   }
@@ -84,23 +96,98 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
 
   void _startMotoboyTracking(String motoboyId) {
     _motoboyChannel?.unsubscribe();
-    _motoboyChannel = ref.read(deliveryRepositoryProvider).watchMotoboyLocation(
-      motoboyId: motoboyId,
-      onUpdate: (lat, lng) {
-        if (mounted) {
-          setState(() => _animateMotoboyTo(LatLng(lat, lng)));
-        }
-      },
+    _motoboyChannel = ref
+        .read(deliveryRepositoryProvider)
+        .watchMotoboyLocation(
+          motoboyId: motoboyId,
+          onUpdate: (lat, lng) {
+            if (mounted) {
+              final pos = LatLng(lat, lng);
+              setState(() => _animateMotoboyTo(pos));
+              _updateEta(pos);
+              _maybeNotifyPickupArrival(pos);
+            }
+          },
+        );
+  }
+
+  Future<void> _maybeNotifyPickupArrival(LatLng motoboyPos) async {
+    if (_hasShownPickupArrival) return;
+    final delivery = ref
+        .read(deliveryStreamProvider(widget.deliveryId))
+        .valueOrNull;
+    if (delivery == null || delivery.status != DeliveryStatus.accepted) return;
+    final pickup = LatLng(delivery.pickupLat, delivery.pickupLng);
+    final meters = const Distance().as(LengthUnit.Meter, motoboyPos, pickup);
+    if (meters > 150) return;
+
+    _hasShownPickupArrival = true;
+    if (!mounted) return;
+    AppToast.show(
+      context,
+      title: 'Entregador chegou à coleta',
+      subtitle: 'Seu pedido está prestes a ser retirado.',
+      type: AppToastType.info,
     );
+    await ref
+        .read(notificationServiceProvider)
+        .showClientAlert(
+          title: 'Entregador chegou à coleta',
+          body: 'Seu pedido está prestes a ser retirado.',
+          payload: delivery.id,
+        );
+  }
+
+  void _updateEta(LatLng motoboyPos) {
+    final now = DateTime.now();
+    // Atualiza ETA no máximo a cada 30s para não sobrecarregar a API
+    if (_lastEtaFetch != null &&
+        now.difference(_lastEtaFetch!).inSeconds < 30) {
+      return;
+    }
+    _lastEtaFetch = now;
+
+    // Pega o destino correto a partir do stream atual
+    final delivery = ref
+        .read(deliveryStreamProvider(widget.deliveryId))
+        .valueOrNull;
+    if (delivery == null) return;
+
+    final stops = <LatLng>[
+      motoboyPos,
+      if (delivery.status == DeliveryStatus.accepted)
+        LatLng(delivery.pickupLat, delivery.pickupLng)
+      else ...[
+        if (delivery.extraStopLat != null && delivery.extraStopLng != null)
+          LatLng(delivery.extraStopLat!, delivery.extraStopLng!),
+        LatLng(delivery.deliveryLat, delivery.deliveryLng),
+      ],
+    ];
+
+    _routeService
+        .getRouteWithStops(stops)
+        .then((result) {
+          if (!mounted) return;
+          final mins = (result.durationSeconds / 60).ceil();
+          ref.read(_etaProvider.notifier).state = mins <= 1
+              ? 'Chegando'
+              : '~ $mins min';
+        })
+        .catchError((_) {});
   }
 
   Future<void> _loadRoute(DeliveryModel delivery) async {
     try {
       final routeService = ref.read(routeServiceProvider);
-      final points = await routeService.getRoute(
+      final stops = <LatLng>[
         LatLng(delivery.pickupLat, delivery.pickupLng),
+        if (delivery.extraStopLat != null && delivery.extraStopLng != null)
+          LatLng(delivery.extraStopLat!, delivery.extraStopLng!),
         LatLng(delivery.deliveryLat, delivery.deliveryLng),
-      );
+      ];
+      final points = await routeService
+          .getRouteWithStops(stops)
+          .then((result) => result.points);
       if (mounted) {
         setState(() => _routePoints = points);
       }
@@ -117,7 +204,10 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     }
   }
 
-  Future<void> _cancelDelivery(String deliveryId) async {
+  Future<void> _cancelDelivery(
+    String deliveryId, {
+    bool withPenaltyWarning = false,
+  }) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -126,9 +216,46 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
           borderRadius: BorderRadius.circular(AppRadius.md),
         ),
         title: Text('Cancelar entrega?', style: AppTypography.h3),
-        content: Text(
-          'Esta ação não pode ser desfeita.',
-          style: AppTypography.bodyMedium,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (withPenaltyWarning) ...[
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                decoration: BoxDecoration(
+                  color: AppColors.error.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                  border: Border.all(
+                    color: AppColors.error.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.warning_amber_rounded,
+                      color: AppColors.error,
+                      size: 18,
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        'O entregador já foi aceito. Cancelamentos frequentes podem afetar sua conta.',
+                        style: AppTypography.labelSmall.copyWith(
+                          color: AppColors.error,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+            ],
+            Text(
+              'Esta ação não pode ser desfeita.',
+              style: AppTypography.bodyMedium,
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -144,9 +271,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(
               'Cancelar entrega',
-              style: AppTypography.labelLarge.copyWith(
-                color: AppColors.error,
-              ),
+              style: AppTypography.labelLarge.copyWith(color: AppColors.error),
             ),
           ),
         ],
@@ -257,6 +382,8 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
       },
     );
 
+    final etaText = ref.watch(_etaProvider);
+
     return deliveryAsync.when(
       loading: () => const Scaffold(
         backgroundColor: AppColors.background,
@@ -294,12 +421,23 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
         }
 
         // Carrega rota se ainda não carregou
-        if (_routePoints.isEmpty) {
+        final routeKey = [
+          delivery.status.dbValue,
+          delivery.pickupLat,
+          delivery.pickupLng,
+          delivery.extraStopLat,
+          delivery.extraStopLng,
+          delivery.deliveryLat,
+          delivery.deliveryLng,
+        ].join('|');
+        if (_routePoints.isEmpty || _routeCacheKey != routeKey) {
+          _routeCacheKey = routeKey;
           _loadRoute(delivery);
         }
 
         // Caso a tela abra com a entrega já concluída (sem transição de status)
-        if (delivery.status == DeliveryStatus.completed && !_hasCheckedInitialRating) {
+        if (delivery.status == DeliveryStatus.completed &&
+            !_hasCheckedInitialRating) {
           _hasCheckedInitialRating = true;
           _maybeShowRating(delivery);
         }
@@ -309,11 +447,18 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
             delivery.motoboyLat != null &&
             delivery.motoboyLng != null) {
           _motoboyTo = LatLng(delivery.motoboyLat!, delivery.motoboyLng!);
+          _maybeNotifyPickupArrival(_motoboyTo!);
         }
 
         final pickupLatLng = LatLng(delivery.pickupLat, delivery.pickupLng);
-        final deliveryLatLng =
-            LatLng(delivery.deliveryLat, delivery.deliveryLng);
+        final extraStopLatLng =
+            delivery.extraStopLat != null && delivery.extraStopLng != null
+            ? LatLng(delivery.extraStopLat!, delivery.extraStopLng!)
+            : null;
+        final deliveryLatLng = LatLng(
+          delivery.deliveryLat,
+          delivery.deliveryLng,
+        );
 
         return Scaffold(
           backgroundColor: AppColors.background,
@@ -363,8 +508,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                       shape: BoxShape.circle,
                                       boxShadow: [
                                         BoxShadow(
-                                          color: AppColors.primary
-                                              .withValues(alpha: 0.4),
+                                          color: AppColors.primary.withValues(
+                                            alpha: 0.4,
+                                          ),
                                           blurRadius: 10,
                                         ),
                                       ],
@@ -377,6 +523,31 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                   ),
                                 ),
                                 // Entrega
+                                if (extraStopLatLng != null)
+                                  Marker(
+                                    point: extraStopLatLng,
+                                    width: 40,
+                                    height: 40,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFFF9800),
+                                        shape: BoxShape.circle,
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(
+                                              0xFFFF9800,
+                                            ).withValues(alpha: 0.4),
+                                            blurRadius: 10,
+                                          ),
+                                        ],
+                                      ),
+                                      child: const Icon(
+                                        Icons.add_location_alt_rounded,
+                                        color: Colors.white,
+                                        size: 20,
+                                      ),
+                                    ),
+                                  ),
                                 Marker(
                                   point: deliveryLatLng,
                                   width: 40,
@@ -387,8 +558,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                       shape: BoxShape.circle,
                                       boxShadow: [
                                         BoxShadow(
-                                          color: AppColors.error
-                                              .withValues(alpha: 0.4),
+                                          color: AppColors.error.withValues(
+                                            alpha: 0.4,
+                                          ),
                                           blurRadius: 10,
                                         ),
                                       ],
@@ -416,8 +588,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                         ),
                                         boxShadow: [
                                           BoxShadow(
-                                            color: AppColors.primary
-                                                .withValues(alpha: 0.4),
+                                            color: AppColors.primary.withValues(
+                                              alpha: 0.4,
+                                            ),
                                             blurRadius: 12,
                                           ),
                                         ],
@@ -445,7 +618,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                               height: 44,
                               decoration: BoxDecoration(
                                 color: AppColors.background,
-                                borderRadius: BorderRadius.circular(AppRadius.sm),
+                                borderRadius: BorderRadius.circular(
+                                  AppRadius.sm,
+                                ),
                                 boxShadow: [
                                   BoxShadow(
                                     color: Colors.black.withValues(alpha: 0.3),
@@ -473,7 +648,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                             ),
                             decoration: BoxDecoration(
                               color: AppColors.background,
-                              borderRadius: BorderRadius.circular(AppRadius.full),
+                              borderRadius: BorderRadius.circular(
+                                AppRadius.full,
+                              ),
                               border: Border.all(
                                 color: delivery.status.color,
                                 width: 1,
@@ -531,8 +708,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                             height: 4,
                             decoration: BoxDecoration(
                               color: AppColors.surfaceBorder,
-                              borderRadius:
-                                  BorderRadius.circular(AppRadius.full),
+                              borderRadius: BorderRadius.circular(
+                                AppRadius.full,
+                              ),
                             ),
                           ),
                         ),
@@ -548,10 +726,13 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                 height: 44,
                                 decoration: BoxDecoration(
                                   color: AppColors.primaryDeep,
-                                  borderRadius:
-                                      BorderRadius.circular(AppRadius.sm),
+                                  borderRadius: BorderRadius.circular(
+                                    AppRadius.sm,
+                                  ),
                                   border: Border.all(
-                                    color: AppColors.primary.withValues(alpha: 0.3),
+                                    color: AppColors.primary.withValues(
+                                      alpha: 0.3,
+                                    ),
                                   ),
                                 ),
                                 child: Icon(
@@ -563,8 +744,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                               const SizedBox(width: AppSpacing.md),
                               Expanded(
                                 child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
                                       delivery.motoboyName ?? 'Entregador',
@@ -574,21 +754,22 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                     Row(
                                       children: [
                                         VehicleBadge(
-                                            category:
-                                                delivery.vehicleCategory),
+                                          category: delivery.vehicleCategory,
+                                        ),
                                         if (delivery.motoboyPlate != null) ...[
                                           const SizedBox(width: AppSpacing.xs),
                                           Text(
                                             delivery.motoboyPlate!,
-                                            style:
-                                                AppTypography.mono.copyWith(
+                                            style: AppTypography.mono.copyWith(
                                               color: AppColors.primary,
                                               fontSize: 11,
                                             ),
                                           ),
                                         ],
                                         if (delivery.motoboyAvgRating != null &&
-                                            (delivery.motoboyTotalRatings ?? 0) > 0) ...[
+                                            (delivery.motoboyTotalRatings ??
+                                                    0) >
+                                                0) ...[
                                           const SizedBox(width: AppSpacing.sm),
                                           const Icon(
                                             Icons.star_rounded,
@@ -597,24 +778,154 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                           ),
                                           const SizedBox(width: 2),
                                           Text(
-                                            delivery.motoboyAvgRating!.toStringAsFixed(1),
-                                            style: AppTypography.labelSmall.copyWith(
-                                              color: AppColors.textSecondary,
-                                              fontSize: 11,
-                                            ),
+                                            delivery.motoboyAvgRating!
+                                                .toStringAsFixed(1),
+                                            style: AppTypography.labelSmall
+                                                .copyWith(
+                                                  color:
+                                                      AppColors.textSecondary,
+                                                  fontSize: 11,
+                                                ),
                                           ),
                                         ],
                                       ],
                                     ),
+                                    const SizedBox(height: AppSpacing.xs),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: AppSpacing.sm,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: delivery.motoboyReputation.color
+                                            .withValues(alpha: 0.14),
+                                        borderRadius: BorderRadius.circular(
+                                          AppRadius.full,
+                                        ),
+                                        border: Border.all(
+                                          color: delivery
+                                              .motoboyReputation
+                                              .color
+                                              .withValues(alpha: 0.3),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            delivery.motoboyReputation.icon,
+                                            size: 13,
+                                            color: delivery
+                                                .motoboyReputation
+                                                .color,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Flexible(
+                                            child: Text(
+                                              '${delivery.motoboyReputation.label} • ${delivery.motoboyReputation.summary}',
+                                              style: AppTypography.labelSmall
+                                                  .copyWith(
+                                                    color: delivery
+                                                        .motoboyReputation
+                                                        .color,
+                                                    fontSize: 10,
+                                                  ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
-                              Text(
-                                CurrencyFormatter.format(delivery.value),
-                                style: AppTypography.numericLarge,
-                              ),
+                              // ETA chip
+                              if (etaText != null &&
+                                  delivery.status != DeliveryStatus.completed &&
+                                  delivery.status != DeliveryStatus.cancelled)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: AppSpacing.sm,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primaryDeep,
+                                    borderRadius: BorderRadius.circular(
+                                      AppRadius.xs,
+                                    ),
+                                    border: Border.all(
+                                      color: AppColors.primary.withValues(
+                                        alpha: 0.3,
+                                      ),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.schedule_rounded,
+                                        size: 12,
+                                        color: AppColors.primary,
+                                      ),
+                                      const SizedBox(width: 3),
+                                      Text(
+                                        etaText,
+                                        style: AppTypography.labelSmall
+                                            .copyWith(
+                                              color: AppColors.primary,
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              else
+                                Text(
+                                  CurrencyFormatter.format(delivery.value),
+                                  style: AppTypography.numericLarge,
+                                ),
                             ],
                           ),
+                          // Botão de chat (apenas quando ativo)
+                          if (delivery.motoboyId != null &&
+                              delivery.status != DeliveryStatus.completed &&
+                              delivery.status != DeliveryStatus.cancelled) ...[
+                            const SizedBox(height: AppSpacing.sm),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                icon: const Icon(
+                                  Icons.chat_bubble_outline_rounded,
+                                  size: 16,
+                                ),
+                                label: const Text('Falar com o entregador'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: AppColors.primary,
+                                  side: const BorderSide(
+                                    color: AppColors.primary,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(
+                                      AppRadius.sm,
+                                    ),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: AppSpacing.sm,
+                                  ),
+                                  textStyle: AppTypography.labelLarge,
+                                ),
+                                onPressed: () {
+                                  final name = Uri.encodeComponent(
+                                    delivery.motoboyName ?? 'Entregador',
+                                  );
+                                  context.push(
+                                    '/client/chat/${delivery.id}?name=$name',
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: AppSpacing.lg),
                           const Divider(color: AppColors.surfaceBorder),
                           const SizedBox(height: AppSpacing.md),
@@ -650,6 +961,15 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                           label: 'Coleta',
                           address: delivery.pickupAddress,
                         ),
+                        if (delivery.extraStopAddress != null) ...[
+                          const SizedBox(height: AppSpacing.sm),
+                          _TrackingAddressRow(
+                            icon: Icons.add_location_alt_rounded,
+                            iconColor: const Color(0xFFFF9800),
+                            label: 'Parada extra',
+                            address: delivery.extraStopAddress!,
+                          ),
+                        ],
                         const SizedBox(height: AppSpacing.md),
                         _TrackingAddressRow(
                           icon: Icons.location_on_rounded,
@@ -658,7 +978,37 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                           address: delivery.deliveryAddress,
                         ),
 
-                        // Botão cancelar (só se pendente)
+                        // Foto de confirmação de entrega
+                        if (delivery.status == DeliveryStatus.completed &&
+                            delivery.deliveryPhotoUrl != null) ...[
+                          const SizedBox(height: AppSpacing.lg),
+                          const Divider(color: AppColors.surfaceBorder),
+                          const SizedBox(height: AppSpacing.sm),
+                          Text(
+                            'Confirmação de entrega',
+                            style: AppTypography.labelLarge,
+                          ),
+                          const SizedBox(height: AppSpacing.sm),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            child: Image.network(
+                              delivery.deliveryPhotoUrl!,
+                              height: 160,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(
+                                height: 80,
+                                color: AppColors.surfaceBorder,
+                                child: const Icon(
+                                  Icons.broken_image_rounded,
+                                  color: AppColors.textTertiary,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+
+                        // Botão cancelar com aviso de penalidade se necessário
                         if (delivery.canCancel) ...[
                           const SizedBox(height: AppSpacing.xl2),
                           SizedBox(
@@ -671,13 +1021,18 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                   width: 1.5,
                                 ),
                                 shape: RoundedRectangleBorder(
-                                  borderRadius:
-                                      BorderRadius.circular(AppRadius.md),
+                                  borderRadius: BorderRadius.circular(
+                                    AppRadius.md,
+                                  ),
                                 ),
                               ),
                               onPressed: _isCancelling
                                   ? null
-                                  : () => _cancelDelivery(delivery.id),
+                                  : () => _cancelDelivery(
+                                      delivery.id,
+                                      withPenaltyWarning:
+                                          delivery.isCancelWithPenaltyWarning,
+                                    ),
                               child: _isCancelling
                                   ? const SizedBox(
                                       width: 20,
@@ -689,8 +1044,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                     )
                                   : Text(
                                       'Cancelar Entrega',
-                                      style:
-                                          AppTypography.button.copyWith(
+                                      style: AppTypography.button.copyWith(
                                         color: AppColors.error,
                                       ),
                                     ),

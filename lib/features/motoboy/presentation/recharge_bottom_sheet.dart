@@ -13,8 +13,9 @@ import '../../../core/widgets/app_toast.dart';
 import '../../shared/widgets/primary_button.dart';
 import '../domain/motoboy_providers.dart';
 
-final _paymentServiceProvider =
-    Provider<PaymentService>((ref) => PaymentService());
+final _paymentServiceProvider = Provider<PaymentService>(
+  (ref) => PaymentService(),
+);
 
 class RechargeBottomSheet extends ConsumerStatefulWidget {
   final String motoboyId;
@@ -30,9 +31,11 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
   // Etapas: 0 = selecionar valor, 1 = QR Code, 2 = confirmado
   int _step = 0;
   double _selectedAmount = 0;
+  double _resolvedAmount = 0;
   final _customAmountCtrl = TextEditingController();
   bool _isLoading = false;
   bool _isPolling = false;
+  String _paymentMethod = 'pix';
 
   // Dados do QR Code
   PixChargeResult? _pixResult;
@@ -51,9 +54,9 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
   Future<void> _generateCharge() async {
     final amount = _selectedAmount > 0
         ? _selectedAmount
-        : double.tryParse(
-                _customAmountCtrl.text.replaceAll(',', '.').trim()) ??
-            0;
+        : double.tryParse(_customAmountCtrl.text.replaceAll(',', '.').trim()) ??
+              0;
+    _resolvedAmount = amount;
 
     if (amount < 20) {
       AppToast.show(
@@ -70,11 +73,11 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
     try {
       final paymentService = ref.read(_paymentServiceProvider);
 
-      if (paymentService.isSimulationMode) {
-        // Modo dev: simula recarga instantânea
-        await paymentService.simulateRecharge(
+      if (_paymentMethod != 'pix') {
+        await paymentService.createInstantRecharge(
           motoboyId: widget.motoboyId,
           amount: amount,
+          paymentMethod: _paymentMethod,
         );
         ref.invalidate(motoboyStreamProvider);
         ref.invalidate(transactionsProvider);
@@ -83,7 +86,27 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
           AppToast.show(
             context,
             title: 'Saldo recarregado!',
-            subtitle: '${CurrencyFormatter.format(amount)} adicionado à sua carteira',
+            subtitle:
+                '${CurrencyFormatter.format(amount)} aprovado via $_paymentMethodLabel',
+            type: AppToastType.success,
+            duration: const Duration(seconds: 5),
+          );
+        }
+      } else if (paymentService.isSimulationMode) {
+        await paymentService.simulateRecharge(
+          motoboyId: widget.motoboyId,
+          amount: amount,
+          paymentMethod: 'pix',
+        );
+        ref.invalidate(motoboyStreamProvider);
+        ref.invalidate(transactionsProvider);
+        if (mounted) {
+          setState(() => _step = 2);
+          AppToast.show(
+            context,
+            title: 'Saldo recarregado!',
+            subtitle:
+                '${CurrencyFormatter.format(amount)} adicionado à sua carteira',
             type: AppToastType.success,
             duration: const Duration(seconds: 5),
           );
@@ -139,6 +162,12 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
     return '${min.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
   }
 
+  String get _paymentMethodLabel => switch (_paymentMethod) {
+    'credit_card' => 'cartão de crédito',
+    'debit_card' => 'cartão de débito',
+    _ => 'PIX',
+  };
+
   Future<void> _pollForConfirmation() async {
     if (_pixResult == null) return;
     setState(() => _isPolling = true);
@@ -166,7 +195,7 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
               context,
               title: 'PIX confirmado!',
               subtitle:
-                  '${CurrencyFormatter.format(_selectedAmount)} adicionado à sua carteira',
+                  '${CurrencyFormatter.format(_resolvedAmount)} adicionado à sua carteira',
               type: AppToastType.success,
               duration: const Duration(seconds: 5),
             );
@@ -246,18 +275,53 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
             color: AppColors.primary.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(AppRadius.md),
           ),
-          child: const Icon(
-            Icons.pix_rounded,
+          child: Icon(
+            _paymentMethod == 'pix'
+                ? Icons.pix_rounded
+                : _paymentMethod == 'credit_card'
+                ? Icons.credit_card_rounded
+                : Icons.payment_rounded,
             color: AppColors.primary,
             size: 32,
           ),
         ),
         const SizedBox(height: AppSpacing.lg),
-        Text('Recarga via PIX', style: AppTypography.h2),
+        Text('Recarregar saldo', style: AppTypography.h2),
         const SizedBox(height: AppSpacing.sm),
         Text(
-          'Selecione o valor para recarregar',
+          'Escolha o meio de pagamento e o valor da recarga',
           style: AppTypography.bodyMedium,
+        ),
+        const SizedBox(height: AppSpacing.xl2),
+        Row(
+          children: [
+            Expanded(
+              child: _MethodChip(
+                icon: Icons.pix_rounded,
+                label: 'PIX',
+                selected: _paymentMethod == 'pix',
+                onTap: () => setState(() => _paymentMethod = 'pix'),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: _MethodChip(
+                icon: Icons.credit_card_rounded,
+                label: 'Crédito',
+                selected: _paymentMethod == 'credit_card',
+                onTap: () => setState(() => _paymentMethod = 'credit_card'),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: _MethodChip(
+                icon: Icons.account_balance_wallet_rounded,
+                label: 'Débito',
+                selected: _paymentMethod == 'debit_card',
+                onTap: () => setState(() => _paymentMethod = 'debit_card'),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: AppSpacing.xl3),
 
@@ -275,9 +339,7 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
                   margin: EdgeInsets.only(
                     right: amount == _presetAmounts.last ? 0 : AppSpacing.sm,
                   ),
-                  padding: const EdgeInsets.symmetric(
-                    vertical: AppSpacing.md,
-                  ),
+                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
                   decoration: BoxDecoration(
                     color: isSelected
                         ? AppColors.primaryDeep
@@ -297,8 +359,9 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
                         color: isSelected
                             ? AppColors.primary
                             : AppColors.textSecondary,
-                        fontWeight:
-                            isSelected ? FontWeight.w700 : FontWeight.w500,
+                        fontWeight: isSelected
+                            ? FontWeight.w700
+                            : FontWeight.w500,
                       ),
                     ),
                   ),
@@ -312,16 +375,14 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
         // Campo personalizado
         Row(
           children: [
-            Text('ou digite um valor:',
-                style: AppTypography.bodySmall),
+            Text('ou digite um valor:', style: AppTypography.bodySmall),
           ],
         ),
         const SizedBox(height: AppSpacing.sm),
         TextFormField(
           controller: _customAmountCtrl,
           keyboardType: TextInputType.number,
-          style:
-              AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
+          style: AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
           onChanged: (_) => setState(() => _selectedAmount = 0),
           decoration: const InputDecoration(
             hintText: '0,00',
@@ -332,7 +393,9 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
 
         // Botão gerar
         PrimaryButton(
-          label: 'Gerar QR Code PIX',
+          label: _paymentMethod == 'pix'
+              ? 'Gerar QR Code PIX'
+              : 'Confirmar recarga',
           onPressed: _isLoading ? null : _generateCharge,
           isLoading: _isLoading,
         ),
@@ -391,15 +454,16 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
           decoration: BoxDecoration(
             color: AppColors.warning.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(AppRadius.full),
-            border: Border.all(
-              color: AppColors.warning.withValues(alpha: 0.3),
-            ),
+            border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.timer_outlined,
-                  color: AppColors.warning, size: 16),
+              const Icon(
+                Icons.timer_outlined,
+                color: AppColors.warning,
+                size: 16,
+              ),
               const SizedBox(width: AppSpacing.xs),
               Text(
                 'Expira em $_formattedTime',
@@ -422,14 +486,18 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
               SnackBar(
                 content: Row(
                   children: [
-                    const Icon(Icons.check_circle_outline,
-                        color: AppColors.primary, size: 18),
+                    const Icon(
+                      Icons.check_circle_outline,
+                      color: AppColors.primary,
+                      size: 18,
+                    ),
                     const SizedBox(width: AppSpacing.sm),
                     Expanded(
                       child: Text(
                         'Código PIX copiado!',
-                        style: AppTypography.bodyMedium
-                            .copyWith(color: AppColors.textPrimary),
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
                       ),
                     ),
                   ],
@@ -461,8 +529,11 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
                   ),
                 ),
                 const SizedBox(width: AppSpacing.sm),
-                const Icon(Icons.copy_rounded,
-                    color: AppColors.primary, size: 18),
+                const Icon(
+                  Icons.copy_rounded,
+                  color: AppColors.primary,
+                  size: 18,
+                ),
               ],
             ),
           ),
@@ -524,6 +595,56 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
         ),
         const SizedBox(height: AppSpacing.xl2),
       ],
+    );
+  }
+}
+
+class _MethodChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _MethodChip({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm,
+          vertical: AppSpacing.md,
+        ),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primaryDeep : AppColors.surfaceHigh,
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          border: Border.all(
+            color: selected ? AppColors.primary : AppColors.surfaceBorder,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              icon,
+              size: 20,
+              color: selected ? AppColors.primary : AppColors.textSecondary,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: AppTypography.labelSmall.copyWith(
+                color: selected ? AppColors.primary : AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,10 +23,7 @@ import '../domain/client_providers.dart';
 class CreateDeliveryScreen extends ConsumerStatefulWidget {
   final VehicleCategoryInfo? initialCategory;
 
-  const CreateDeliveryScreen({
-    super.key,
-    this.initialCategory,
-  });
+  const CreateDeliveryScreen({super.key, this.initialCategory});
 
   @override
   ConsumerState<CreateDeliveryScreen> createState() =>
@@ -57,6 +52,16 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
   double? _distanceKm;
   double? _deliveryValue;
 
+  // Parada extra (opcional)
+  final _extraStopCtrl = TextEditingController();
+  final _extraStopFocus = FocusNode();
+  LatLng? _extraStopLatLng;
+  List<AddressSuggestion> _extraStopSuggestions = [];
+  bool _loadingExtraStopSuggestions = false;
+  Timer? _extraStopDebounce;
+  bool _hasExtraStop = false;
+  bool _settingExtraStop = false;
+
   List<AddressSuggestion> _pickupSuggestions = [];
   List<AddressSuggestion> _deliverySuggestions = [];
   bool _loadingPickupSuggestions = false;
@@ -80,12 +85,13 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
     super.initState();
     if (widget.initialCategory != null) {
       _selectedCategory = widget.initialCategory;
-      _step = 1; // Skip the vehicle selection step!
+      _step = 1;
     }
     _fetchUserLocation();
     _loadSurgeInfo();
     _pickupCtrl.addListener(_onPickupChanged);
     _deliveryCtrl.addListener(_onDeliveryChanged);
+    _extraStopCtrl.addListener(_onExtraStopChanged);
     _pickupFocus.addListener(() {
       if (!_pickupFocus.hasFocus) {
         Future.delayed(const Duration(milliseconds: 150), () {
@@ -100,17 +106,27 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
         });
       }
     });
+    _extraStopFocus.addListener(() {
+      if (!_extraStopFocus.hasFocus) {
+        Future.delayed(const Duration(milliseconds: 150), () {
+          if (mounted) setState(() => _extraStopSuggestions = []);
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
     _pickupCtrl.dispose();
     _deliveryCtrl.dispose();
+    _extraStopCtrl.dispose();
     _mapController.dispose();
     _pickupFocus.dispose();
     _deliveryFocus.dispose();
+    _extraStopFocus.dispose();
     _pickupDebounce?.cancel();
     _deliveryDebounce?.cancel();
+    _extraStopDebounce?.cancel();
     super.dispose();
   }
 
@@ -166,6 +182,53 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
       _recalculate();
     }
     _scheduleDeliveryAutocomplete();
+  }
+
+  void _onExtraStopChanged() {
+    if (_settingExtraStop) return;
+    if (_extraStopLatLng != null) {
+      setState(() => _extraStopLatLng = null);
+    }
+    _scheduleExtraStopAutocomplete();
+  }
+
+  void _scheduleExtraStopAutocomplete() {
+    _extraStopDebounce?.cancel();
+    final query = _extraStopCtrl.text.trim();
+    if (query.length < 3) {
+      setState(() {
+        _extraStopSuggestions = [];
+        _loadingExtraStopSuggestions = false;
+      });
+      return;
+    }
+    setState(() => _loadingExtraStopSuggestions = true);
+    _extraStopDebounce = Timer(const Duration(milliseconds: 400), () async {
+      if (!mounted) return;
+      final suggestions = await ref
+          .read(geocodingServiceProvider)
+          .autocomplete(query, focusPoint: _userLocation);
+      if (!mounted) return;
+      if (_extraStopCtrl.text.trim() == query) {
+        setState(() {
+          _extraStopSuggestions = suggestions;
+          _loadingExtraStopSuggestions = false;
+        });
+      }
+    });
+  }
+
+  void _selectExtraStop(AddressSuggestion s) {
+    _extraStopDebounce?.cancel();
+    _settingExtraStop = true;
+    _extraStopCtrl.text = s.label;
+    _settingExtraStop = false;
+    _extraStopFocus.unfocus();
+    setState(() {
+      _extraStopLatLng = s.coordinates;
+      _extraStopSuggestions = [];
+      _loadingExtraStopSuggestions = false;
+    });
   }
 
   void _schedulePickupAutocomplete() {
@@ -271,8 +334,10 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
       );
       final latLng = LatLng(position.latitude, position.longitude);
       final service = ref.read(geocodingServiceProvider);
-      final address =
-          await service.reverseGeocode(position.latitude, position.longitude);
+      final address = await service.reverseGeocode(
+        position.latitude,
+        position.longitude,
+      );
       if (mounted) {
         _settingPickup = true;
         _pickupCtrl.text = address ?? 'Minha localização';
@@ -296,7 +361,8 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
       final r = await service.geocode(_pickupCtrl.text.trim());
       if (r == null) {
         _showSnack(
-            'Endereço de coleta não encontrado. Selecione uma sugestão.');
+          'Endereço de coleta não encontrado. Selecione uma sugestão.',
+        );
         return false;
       }
       _pickupLatLng = r;
@@ -305,10 +371,23 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
       final r = await service.geocode(_deliveryCtrl.text.trim());
       if (r == null) {
         _showSnack(
-            'Endereço de entrega não encontrado. Selecione uma sugestão.');
+          'Endereço de entrega não encontrado. Selecione uma sugestão.',
+        );
         return false;
       }
       _deliveryLatLng = r;
+    }
+    if (_hasExtraStop &&
+        _extraStopLatLng == null &&
+        _extraStopCtrl.text.trim().isNotEmpty) {
+      final r = await service.geocode(_extraStopCtrl.text.trim());
+      if (r == null) {
+        _showSnack(
+          'Parada extra não encontrada. Selecione uma sugestão válida.',
+        );
+        return false;
+      }
+      _extraStopLatLng = r;
     }
     return _pickupLatLng != null && _deliveryLatLng != null;
   }
@@ -330,19 +409,26 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
       return;
     }
 
-    _fitMapBounds();
-
     final from = _pickupLatLng!;
     final to = _deliveryLatLng!;
+    final expectedExtraStop = _hasExtraStop && _extraStopLatLng != null
+        ? _extraStopLatLng
+        : null;
+    final stops = [from, if (expectedExtraStop != null) expectedExtraStop, to];
+
+    _fitMapBounds();
 
     try {
-      // Usa a Rota Inteligente que resolve o valor minimo para não dar preju e os pontos da rua
-      final result = await _routeService.getRouteWithInfo(from, to);
-      
+      // Usa a rota real e considera a parada extra quando presente.
+      final result = await _routeService.getRouteWithStops(stops);
+
       if (!mounted) return;
-      
+
       // Se os pontos não mudaram enquanto a requisição rodava:
-      if (_pickupLatLng == from && _deliveryLatLng == to) {
+      final sameExtraStop =
+          (_extraStopLatLng == null && expectedExtraStop == null) ||
+          _extraStopLatLng == expectedExtraStop;
+      if (_pickupLatLng == from && _deliveryLatLng == to && sameExtraStop) {
         final multiplier = _surgeInfo?.multiplier ?? 1.0;
         final realVal = PriceCalculator.calculate(
           _selectedCategory!,
@@ -361,20 +447,21 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
     }
   }
 
-  double _toRad(double deg) => deg * pi / 180;
-
   void _fitMapBounds() {
     if (_pickupLatLng == null || _deliveryLatLng == null) return;
     try {
-      if (_pickupLatLng == _deliveryLatLng) {
-        _mapController.move(_pickupLatLng!, 16);
+      final points = <LatLng>[
+        _pickupLatLng!,
+        if (_hasExtraStop && _extraStopLatLng != null) _extraStopLatLng!,
+        _deliveryLatLng!,
+      ];
+      if (points.length == 1 || points.toSet().length == 1) {
+        _mapController.move(points.first, 16);
         return;
       }
+      final bounds = LatLngBounds.fromPoints(points);
       _mapController.fitCamera(
-        CameraFit.bounds(
-          bounds: LatLngBounds(_pickupLatLng!, _deliveryLatLng!),
-          padding: const EdgeInsets.all(60),
-        ),
+        CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(60)),
       );
     } catch (_) {}
   }
@@ -422,21 +509,28 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
       final user = ref.read(authNotifierProvider).valueOrNull;
       if (user == null) return;
 
-      final delivery =
-          await ref.read(deliveryRepositoryProvider).createDelivery(
-                clientId: user.id,
-                pickupAddress: _pickupCtrl.text.trim(),
-                pickupLat: _pickupLatLng!.latitude,
-                pickupLng: _pickupLatLng!.longitude,
-                deliveryAddress: _deliveryCtrl.text.trim(),
-                deliveryLat: _deliveryLatLng!.latitude,
-                deliveryLng: _deliveryLatLng!.longitude,
-                value: _deliveryValue!,
-                paymentMethod: _paymentMethod,
-                distanceKm: _distanceKm!,
-                vehicleCategory:
-                    _selectedCategory?.category ?? VehicleCategory.motoboy,
-              );
+      final delivery = await ref
+          .read(deliveryRepositoryProvider)
+          .createDelivery(
+            clientId: user.id,
+            pickupAddress: _pickupCtrl.text.trim(),
+            pickupLat: _pickupLatLng!.latitude,
+            pickupLng: _pickupLatLng!.longitude,
+            deliveryAddress: _deliveryCtrl.text.trim(),
+            deliveryLat: _deliveryLatLng!.latitude,
+            deliveryLng: _deliveryLatLng!.longitude,
+            value: _deliveryValue!,
+            paymentMethod: _paymentMethod,
+            distanceKm: _distanceKm!,
+            vehicleCategory:
+                _selectedCategory?.category ?? VehicleCategory.motoboy,
+            extraStopAddress:
+                (_hasExtraStop && _extraStopCtrl.text.trim().isNotEmpty)
+                ? _extraStopCtrl.text.trim()
+                : null,
+            extraStopLat: _extraStopLatLng?.latitude,
+            extraStopLng: _extraStopLatLng?.longitude,
+          );
 
       ref.invalidate(clientDeliveriesProvider);
 
@@ -456,8 +550,9 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
       SnackBar(
         content: Text(
           msg,
-          style:
-              AppTypography.bodyMedium.copyWith(color: AppColors.textPrimary),
+          style: AppTypography.bodyMedium.copyWith(
+            color: AppColors.textPrimary,
+          ),
         ),
         backgroundColor: AppColors.surface,
         behavior: SnackBarBehavior.floating,
@@ -477,8 +572,10 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
         backgroundColor: AppColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded,
-              color: AppColors.textPrimary),
+          icon: const Icon(
+            Icons.arrow_back_rounded,
+            color: AppColors.textPrimary,
+          ),
           onPressed: _step > 0 ? _prevStep : () => context.pop(),
         ),
         title: Text('Nova Entrega', style: AppTypography.h3),
@@ -499,10 +596,8 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
             Expanded(
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 250),
-                transitionBuilder: (child, animation) => FadeTransition(
-                  opacity: animation,
-                  child: child,
-                ),
+                transitionBuilder: (child, animation) =>
+                    FadeTransition(opacity: animation, child: child),
                 child: _buildStep(),
               ),
             ),
@@ -542,8 +637,7 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
           const SizedBox(height: AppSpacing.xl2),
           CategorySelectorWidget(
             initialValue: _selectedCategory,
-            onSelected: (cat) =>
-                setState(() => _selectedCategory = cat),
+            onSelected: (cat) => setState(() => _selectedCategory = cat),
           ),
           const SizedBox(height: AppSpacing.xl3),
           PrimaryButton(
@@ -608,6 +702,31 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
                   onSuggestionTap: _selectDelivery,
                   leadingIcon: Icons.location_on_rounded,
                 ),
+                const SizedBox(height: AppSpacing.lg),
+                _ExtraStopSection(
+                  enabled: _hasExtraStop,
+                  controller: _extraStopCtrl,
+                  focusNode: _extraStopFocus,
+                  isConfirmed: _extraStopLatLng != null,
+                  isLoading: _loadingExtraStopSuggestions,
+                  suggestions: _extraStopSuggestions,
+                  onToggle: (enabled) {
+                    setState(() {
+                      _hasExtraStop = enabled;
+                      if (!enabled) {
+                        _extraStopCtrl.clear();
+                        _extraStopLatLng = null;
+                        _extraStopSuggestions = [];
+                        _loadingExtraStopSuggestions = false;
+                      }
+                    });
+                    _recalculate();
+                  },
+                  onSuggestionTap: (suggestion) {
+                    _selectExtraStop(suggestion);
+                    _recalculate();
+                  },
+                ),
                 const SizedBox(height: AppSpacing.xl2),
               ],
             ),
@@ -615,10 +734,7 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
 
           // Preview mapa
           if (_pickupLatLng != null || _deliveryLatLng != null)
-            SizedBox(
-              height: 200,
-              child: _buildMapPreview(),
-            ),
+            SizedBox(height: 200, child: _buildMapPreview()),
 
           Padding(
             padding: AppSpacing.screenPaddingFull,
@@ -627,7 +743,8 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
                 const SizedBox(height: AppSpacing.xl2),
                 PrimaryButton(
                   label: 'Continuar',
-                  onPressed: (_pickupCtrl.text.trim().isNotEmpty &&
+                  onPressed:
+                      (_pickupCtrl.text.trim().isNotEmpty &&
                           _deliveryCtrl.text.trim().isNotEmpty)
                       ? () async {
                           final ok = await _ensureGeocoded();
@@ -716,6 +833,17 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
                   label: 'Entrega',
                   address: _deliveryCtrl.text.trim(),
                 ),
+                if (_hasExtraStop && _extraStopCtrl.text.trim().isNotEmpty) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  const Divider(color: AppColors.surfaceBorder, height: 1),
+                  const SizedBox(height: AppSpacing.sm),
+                  _SummaryAddressRow(
+                    icon: Icons.add_location_alt_rounded,
+                    iconColor: const Color(0xFFFF9800),
+                    label: 'Parada extra',
+                    address: _extraStopCtrl.text.trim(),
+                  ),
+                ],
               ],
             ),
           ),
@@ -740,10 +868,7 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
           borderRadius: BorderRadius.circular(AppRadius.md),
           child: FlutterMap(
             mapController: _mapController,
-            options: MapOptions(
-              initialCenter: center,
-              initialZoom: 13,
-            ),
+            options: MapOptions(initialCenter: center, initialZoom: 13),
             children: [
               TileLayer(
                 urlTemplate: AppConstants.mapTileUrl,
@@ -796,6 +921,33 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
                         ),
                         child: const Icon(
                           Icons.flag_rounded,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                  if (_hasExtraStop && _extraStopLatLng != null)
+                    Marker(
+                      point: _extraStopLatLng!,
+                      width: 40,
+                      height: 40,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFF9800),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 3),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(
+                                0xFFFF9800,
+                              ).withValues(alpha: 0.4),
+                              blurRadius: 8,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.add_location_alt_rounded,
                           color: Colors.white,
                           size: 18,
                         ),
@@ -920,17 +1072,17 @@ class _StepDot extends StatelessWidget {
             color: isCompleted
                 ? AppColors.primary
                 : isActive
-                    ? AppColors.primaryDeep
-                    : AppColors.surfaceHigh,
-            border: Border.all(
-              color: color,
-              width: isActive ? 2 : 1,
-            ),
+                ? AppColors.primaryDeep
+                : AppColors.surfaceHigh,
+            border: Border.all(color: color, width: isActive ? 2 : 1),
           ),
           child: Center(
             child: isCompleted
-                ? const Icon(Icons.check_rounded,
-                    size: 14, color: AppColors.textInverse)
+                ? const Icon(
+                    Icons.check_rounded,
+                    size: 14,
+                    color: AppColors.textInverse,
+                  )
                 : Text(
                     '$number',
                     style: AppTypography.labelSmall.copyWith(color: color),
@@ -940,10 +1092,7 @@ class _StepDot extends StatelessWidget {
         const SizedBox(height: 4),
         Text(
           label,
-          style: AppTypography.labelSmall.copyWith(
-            color: color,
-            fontSize: 10,
-          ),
+          style: AppTypography.labelSmall.copyWith(color: color, fontSize: 10),
         ),
       ],
     );
@@ -990,8 +1139,7 @@ class _AddressField extends StatelessWidget {
           controller: controller,
           focusNode: focusNode,
           textInputAction: TextInputAction.search,
-          style:
-              AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
+          style: AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
           decoration: InputDecoration(
             hintText: hint,
             prefixIcon: _buildPrefixIcon(),
@@ -1034,6 +1182,86 @@ class _AddressField extends StatelessWidget {
   }
 }
 
+class _ExtraStopSection extends StatelessWidget {
+  final bool enabled;
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final bool isConfirmed;
+  final bool isLoading;
+  final List<AddressSuggestion> suggestions;
+  final ValueChanged<bool> onToggle;
+  final void Function(AddressSuggestion) onSuggestionTap;
+
+  const _ExtraStopSection({
+    required this.enabled,
+    required this.controller,
+    required this.focusNode,
+    required this.isConfirmed,
+    required this.isLoading,
+    required this.suggestions,
+    required this.onToggle,
+    required this.onSuggestionTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.surfaceBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.alt_route_rounded,
+                color: Color(0xFFFF9800),
+                size: 18,
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  'Adicionar parada extra',
+                  style: AppTypography.labelLarge,
+                ),
+              ),
+              Switch.adaptive(
+                value: enabled,
+                activeTrackColor: AppColors.primary.withValues(alpha: 0.35),
+                activeThumbColor: AppColors.primary,
+                onChanged: onToggle,
+              ),
+            ],
+          ),
+          if (enabled) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              'Use quando a rota precisar passar por um endereço intermediário.',
+              style: AppTypography.bodySmall,
+            ),
+            const SizedBox(height: AppSpacing.md),
+            _AddressField(
+              label: 'Parada extra',
+              hint: 'Rua, número, bairro, cidade',
+              controller: controller,
+              focusNode: focusNode,
+              isConfirmed: isConfirmed,
+              isLoading: isLoading,
+              suggestions: suggestions,
+              onSuggestionTap: onSuggestionTap,
+              leadingIcon: Icons.add_location_alt_rounded,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 // ─────────────────────────────────────────────────────────────
 // Suggestions Card
 // ─────────────────────────────────────────────────────────────
@@ -1057,11 +1285,7 @@ class _SuggestionsCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(color: AppColors.surfaceBorder),
         boxShadow: const [
-          BoxShadow(
-            color: Colors.black26,
-            blurRadius: 8,
-            offset: Offset(0, 4),
-          ),
+          BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4)),
         ],
       ),
       child: ListView.separated(
@@ -1084,11 +1308,11 @@ class _SuggestionsCard extends StatelessWidget {
                     topRight: Radius.circular(AppRadius.md),
                   )
                 : i == suggestions.length - 1
-                    ? const BorderRadius.only(
-                        bottomLeft: Radius.circular(AppRadius.md),
-                        bottomRight: Radius.circular(AppRadius.md),
-                      )
-                    : BorderRadius.zero,
+                ? const BorderRadius.only(
+                    bottomLeft: Radius.circular(AppRadius.md),
+                    bottomRight: Radius.circular(AppRadius.md),
+                  )
+                : BorderRadius.zero,
             child: Padding(
               padding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.md,
@@ -1096,8 +1320,11 @@ class _SuggestionsCard extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.location_on_outlined,
-                      color: AppColors.textTertiary, size: 18),
+                  const Icon(
+                    Icons.location_on_outlined,
+                    color: AppColors.textTertiary,
+                    size: 18,
+                  ),
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Text(
@@ -1164,8 +1391,7 @@ class _PaymentChip extends StatelessWidget {
               Text(
                 label,
                 style: AppTypography.labelSmall.copyWith(
-                  color:
-                      selected ? AppColors.primary : AppColors.textSecondary,
+                  color: selected ? AppColors.primary : AppColors.textSecondary,
                   fontSize: 11,
                 ),
               ),
@@ -1207,13 +1433,15 @@ class _SummaryAddressRow extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: AppTypography.labelSmall
-                    .copyWith(color: AppColors.textTertiary),
+                style: AppTypography.labelSmall.copyWith(
+                  color: AppColors.textTertiary,
+                ),
               ),
               Text(
                 address,
-                style: AppTypography.bodyMedium
-                    .copyWith(color: AppColors.textPrimary),
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.textPrimary,
+                ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),

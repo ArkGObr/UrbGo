@@ -1,10 +1,11 @@
 import 'dart:async';
-import 'dart:io' show Platform;
+import 'dart:io' show Platform, File;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -18,11 +19,11 @@ import '../../../core/services/notification_service.dart';
 import '../../../core/services/route_service.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/widgets/app_toast.dart';
+import '../../client/data/delivery_repository.dart';
 import '../../client/domain/delivery_model.dart';
 import '../../shared/widgets/primary_button.dart';
 import '../../shared/widgets/vehicle_badge.dart';
 import '../domain/motoboy_providers.dart';
-import 'navigation_screen.dart';
 
 /// Provider local para a posição do motoboy em tempo real
 final _myPositionProvider = StateProvider<LatLng?>((ref) => null);
@@ -41,13 +42,13 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
   final RouteService _routeService = RouteService();
   StreamSubscription<Position>? _positionStream;
   StreamSubscription<ServiceStatus>? _gpsStatusSub;
-  
+
   DeliveryModel? _delivery;
   bool _isLoading = true;
   bool _isProcessing = false;
   List<LatLng> _routePoints = [];
 
-  // Variáveis para cache da API de Rotas (OSRM) 
+  // Variáveis para cache da API de Rotas (OSRM)
   DateTime? _lastOsrmFetch;
   RouteResult? _lastRouteResult;
   StreamSubscription<String>? _actionSub;
@@ -58,7 +59,9 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
     _startPositionStream();
     _startGpsMonitor();
     _loadDelivery();
-    _actionSub = ref.read(notificationServiceProvider).onAction.listen((actionId) {
+    _actionSub = ref.read(notificationServiceProvider).onAction.listen((
+      actionId,
+    ) {
       if (!mounted) return;
       if (actionId == 'confirm_pickup' && _delivery != null) {
         _processPickupConfirmation(_delivery!.id, fromNotification: true);
@@ -131,18 +134,26 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
 
       // Carrega a rota real após ter as coordenadas
       final pickup = LatLng(delivery.pickupLat, delivery.pickupLng);
-      final dest = LatLng(delivery.deliveryLat, delivery.deliveryLng);
-      _loadRoute(pickup, dest);
+      final stops = [
+        pickup,
+        if (delivery.extraStopLat != null && delivery.extraStopLng != null)
+          LatLng(delivery.extraStopLat!, delivery.extraStopLng!),
+        LatLng(delivery.deliveryLat, delivery.deliveryLng),
+      ];
+      _loadRoute(stops);
     } catch (e, stack) {
       Logger.error('ActiveRunScreen._loadDelivery', e, stack);
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _loadRoute(LatLng from, LatLng to) async {
-    if (mounted) setState(() => _routePoints = [from, to]);
+  Future<void> _loadRoute(List<LatLng> stops) async {
+    if (stops.isEmpty) return;
+    if (mounted) setState(() => _routePoints = stops);
     try {
-      final points = await _routeService.getRoute(from, to);
+      final points = await _routeService
+          .getRouteWithStops(stops)
+          .then((result) => result.points);
       if (mounted) {
         setState(() => _routePoints = points);
         _fitBounds();
@@ -193,29 +204,45 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
 
   void _updateNotificationStatus(LatLng currentPos) {
     if (_delivery == null) return;
-    
+
     final bool goingToPickup = _delivery!.status == DeliveryStatus.accepted;
-    final dest = goingToPickup
-        ? LatLng(_delivery!.pickupLat, _delivery!.pickupLng)
-        : LatLng(_delivery!.deliveryLat, _delivery!.deliveryLng);
-        
+    final routeStops = <LatLng>[
+      currentPos,
+      if (goingToPickup)
+        LatLng(_delivery!.pickupLat, _delivery!.pickupLng)
+      else ...[
+        if (_delivery!.extraStopLat != null && _delivery!.extraStopLng != null)
+          LatLng(_delivery!.extraStopLat!, _delivery!.extraStopLng!),
+        LatLng(_delivery!.deliveryLat, _delivery!.deliveryLng),
+      ],
+    ];
+    final dest = routeStops.last;
+
     final now = DateTime.now();
     // Busca na API de Rotas a cada 20 segundos para não estourar limite
-    if (_lastOsrmFetch == null || now.difference(_lastOsrmFetch!).inSeconds > 20) {
+    if (_lastOsrmFetch == null ||
+        now.difference(_lastOsrmFetch!).inSeconds > 20) {
       _lastOsrmFetch = now;
-      _routeService.getRouteWithInfo(currentPos, dest).then((routeResult) {
-        if (!mounted) return;
-        _lastRouteResult = routeResult;
-        // Atualiza a notificação imediatamente após chegada do OSRM
-        _dispatchNotification(currentPos, goingToPickup, dest);
-      }).catchError((_) {});
+      _routeService
+          .getRouteWithStops(routeStops)
+          .then((routeResult) {
+            if (!mounted) return;
+            _lastRouteResult = routeResult;
+            // Atualiza a notificação imediatamente após chegada do OSRM
+            _dispatchNotification(currentPos, goingToPickup, dest);
+          })
+          .catchError((_) {});
     } else {
       // Usa o cache enquanto a API não refaz a busca
       _dispatchNotification(currentPos, goingToPickup, dest);
     }
   }
 
-  void _dispatchNotification(LatLng currentPos, bool goingToPickup, LatLng dest) {
+  void _dispatchNotification(
+    LatLng currentPos,
+    bool goingToPickup,
+    LatLng dest,
+  ) {
     if (_delivery == null) return;
 
     double displayKm;
@@ -224,33 +251,44 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
     if (_lastRouteResult != null) {
       // Usa os dados precisos em tempo real da API de roteamento
       displayKm = _lastRouteResult!.distanceKm;
-      // Ajusta ligeiramente a distância real no intervalo dos 20 segundos 
+      // Ajusta ligeiramente a distância real no intervalo dos 20 segundos
       // subtraindo o que ele caminhou em linha reta desde que o cache rodou.
       // (Para simplificar, apenas usamos o distanceKm mais recente do cache, que atualiza a cada 20s)
       minutes = (_lastRouteResult!.durationSeconds / 60).round();
     } else {
       // Fallback: Estimativa em linha reta local
-      final distanceMeters = const Distance().as(LengthUnit.Meter, currentPos, dest);
-      displayKm = (distanceMeters / 1000) * 1.4; 
+      final distanceMeters = const Distance().as(
+        LengthUnit.Meter,
+        currentPos,
+        dest,
+      );
+      displayKm = (distanceMeters / 1000) * 1.4;
       minutes = ((displayKm / 35.0) * 60).round();
     }
-    
+
     // Evita valores zerados bizarros
     if (minutes < 1) minutes = 1;
     if (displayKm < 0.1) displayKm = 0.1;
 
     final formattedKm = displayKm.toStringAsFixed(1);
-    final title = goingToPickup ? 'Indo para o Local de Coleta' : 'A Caminho da Entrega';
-    final destinationLabel = goingToPickup ? _delivery!.pickupAddress : _delivery!.deliveryAddress;
-    final body = '$formattedKm km restantes • ~ $minutes min\nDestino: $destinationLabel';
-    
+    final title = goingToPickup
+        ? 'Indo para o Local de Coleta'
+        : 'A Caminho da Entrega';
+    final destinationLabel = goingToPickup
+        ? _delivery!.pickupAddress
+        : _delivery!.deliveryAddress;
+    final body =
+        '$formattedKm km restantes • ~ $minutes min\nDestino: $destinationLabel';
+
     try {
-      ref.read(notificationServiceProvider).showOngoingRunNotification(
-        title: title,
-        body: body,
-        goingToPickup: goingToPickup,
-        deliveryId: _delivery!.id,
-      );
+      ref
+          .read(notificationServiceProvider)
+          .showOngoingRunNotification(
+            title: title,
+            body: body,
+            goingToPickup: goingToPickup,
+            deliveryId: _delivery!.id,
+          );
     } catch (_) {}
   }
 
@@ -262,19 +300,39 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
     final destination = goingToPickup
         ? LatLng(delivery.pickupLat, delivery.pickupLng)
         : LatLng(delivery.deliveryLat, delivery.deliveryLng);
+    final waypoint =
+        !goingToPickup &&
+            delivery.extraStopLat != null &&
+            delivery.extraStopLng != null
+        ? '${delivery.extraStopLat},${delivery.extraStopLng}'
+        : null;
 
     try {
       if (Platform.isAndroid) {
         // Usa Intent nativo de navegação do Google Maps no modo Direção
-        final uri = Uri.parse('google.navigation:q=${destination.latitude},${destination.longitude}&mode=d');
+        final uri = waypoint == null
+            ? Uri.parse(
+                'google.navigation:q=${destination.latitude},${destination.longitude}&mode=d',
+              )
+            : Uri.parse(
+                'https://www.google.com/maps/dir/?api=1&destination=${destination.latitude},${destination.longitude}&waypoints=$waypoint&travelmode=driving',
+              );
         if (await canLaunchUrl(uri)) {
-          await launchUrl(uri);
+          await launchUrl(
+            uri,
+            mode: waypoint == null
+                ? LaunchMode.platformDefault
+                : LaunchMode.externalApplication,
+          );
           return;
         }
       }
-      
+
       // Fallback para web URL, forçando a abertura no app externo se disponível
-      final fallbackUri = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=${destination.latitude},${destination.longitude}&travelmode=driving');
+      final fallbackUri = Uri.parse(
+        'https://www.google.com/maps/dir/?api=1&destination=${destination.latitude},${destination.longitude}'
+        '${waypoint != null ? '&waypoints=$waypoint' : ''}&travelmode=driving',
+      );
       await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
     } catch (e) {
       if (mounted) {
@@ -340,7 +398,10 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
     await _processPickupConfirmation(deliveryId);
   }
 
-  Future<void> _processPickupConfirmation(String deliveryId, {bool fromNotification = false}) async {
+  Future<void> _processPickupConfirmation(
+    String deliveryId, {
+    bool fromNotification = false,
+  }) async {
     setState(() => _isProcessing = true);
     try {
       await ref.read(motoboyRepositoryProvider).confirmPickup(deliveryId);
@@ -353,7 +414,7 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
           type: AppToastType.success,
         );
       }
-      
+
       // Quando confirmado PELA NOTIFICAÇÃO, leva ao Maps automaticamente
       if (fromNotification && mounted) {
         await Future.delayed(const Duration(milliseconds: 300));
@@ -400,9 +461,7 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(
               'Desistir',
-              style: AppTypography.labelLarge.copyWith(
-                color: AppColors.error,
-              ),
+              style: AppTypography.labelLarge.copyWith(color: AppColors.error),
             ),
           ),
         ],
@@ -469,14 +528,72 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
   }
 
   Future<void> _processDeliveryCompletion(DeliveryModel delivery) async {
+    // Tenta capturar foto de confirmação (opcional — pode pular)
+    File? photoFile;
+    if (mounted) {
+      final picker = ImagePicker();
+      final shouldPhoto = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.md),
+          ),
+          title: Text('Foto de entrega', style: AppTypography.h3),
+          content: Text(
+            'Tire uma foto do pacote entregue para confirmar. Opcional, mas recomendado.',
+            style: AppTypography.bodyMedium,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(
+                'Pular',
+                style: AppTypography.labelLarge.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(
+                'Tirar foto',
+                style: AppTypography.labelLarge.copyWith(
+                  color: AppColors.primary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+      if (shouldPhoto == true && mounted) {
+        final xFile = await picker.pickImage(
+          source: ImageSource.camera,
+          imageQuality: 75,
+          maxWidth: 1280,
+        );
+        if (xFile != null) photoFile = File(xFile.path);
+      }
+    }
+
     setState(() => _isProcessing = true);
     try {
       await ref.read(motoboyRepositoryProvider).completeDelivery(delivery.id);
+      // Upload da foto se capturada
+      if (photoFile != null) {
+        try {
+          await DeliveryRepository().uploadDeliveryPhoto(
+            delivery.id,
+            photoFile,
+          );
+        } catch (_) {
+          // Falha no upload não bloqueia a conclusão
+        }
+      }
       ref.invalidate(availableRunsProvider);
       ref.invalidate(motoboyStreamProvider);
       if (mounted) {
-        final earnings = delivery.value;
-        await _showSuccessDialog(earnings, delivery.commission);
+        await _showSuccessDialog(delivery.netEarnings, delivery.commission);
       }
     } catch (e) {
       if (mounted) {
@@ -553,7 +670,10 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Você deve receber', style: AppTypography.labelLarge),
+                      Text(
+                        'Você deve receber',
+                        style: AppTypography.labelLarge,
+                      ),
                       const SizedBox(width: AppSpacing.sm),
                       Expanded(
                         child: Text(
@@ -602,6 +722,10 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
     final delivery = _delivery!;
     final pickupLatLng = LatLng(delivery.pickupLat, delivery.pickupLng);
     final deliveryLatLng = LatLng(delivery.deliveryLat, delivery.deliveryLng);
+    final extraStopLatLng =
+        (delivery.extraStopLat != null && delivery.extraStopLng != null)
+        ? LatLng(delivery.extraStopLat!, delivery.extraStopLng!)
+        : null;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -683,6 +807,32 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                             ),
                           ),
                         ),
+                        // Parada extra
+                        if (extraStopLatLng != null)
+                          Marker(
+                            point: extraStopLatLng,
+                            width: 36,
+                            height: 36,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFF9800),
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(
+                                      0xFFFF9800,
+                                    ).withValues(alpha: 0.4),
+                                    blurRadius: 8,
+                                  ),
+                                ],
+                              ),
+                              child: const Icon(
+                                Icons.add_location_alt_rounded,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                            ),
+                          ),
                         // Minha posição
                         if (myPos != null)
                           Marker(
@@ -739,6 +889,37 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                       child: const Icon(
                         Icons.arrow_back_rounded,
                         color: AppColors.textPrimary,
+                        size: 22,
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Botão chat
+                Positioned(
+                  top: MediaQuery.of(context).padding.top + 8,
+                  right: AppSpacing.lg,
+                  child: GestureDetector(
+                    onTap: () {
+                      final name = Uri.encodeComponent('Cliente');
+                      context.push('/motoboy/chat/${delivery.id}?name=$name');
+                    },
+                    child: Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: AppColors.background,
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.3),
+                            blurRadius: 10,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.chat_bubble_outline_rounded,
+                        color: AppColors.primary,
                         size: 22,
                       ),
                     ),
@@ -905,7 +1086,7 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                     // Valor + distância
                     Row(
                       children: [
-                        Text('Valor', style: AppTypography.bodyMedium),
+                        Text('Você recebe', style: AppTypography.bodyMedium),
                         const Spacer(),
                         if (delivery.distanceKm != null) ...[
                           Container(
@@ -941,7 +1122,7 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                           const SizedBox(width: AppSpacing.sm),
                         ],
                         Text(
-                          CurrencyFormatter.format(delivery.value),
+                          CurrencyFormatter.format(delivery.netEarnings),
                           style: AppTypography.numericLarge,
                         ),
                       ],
@@ -955,6 +1136,15 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                       label: 'Coleta',
                       address: delivery.pickupAddress,
                     ),
+                    if (delivery.extraStopAddress != null) ...[
+                      const SizedBox(height: AppSpacing.sm),
+                      _AddressRow(
+                        icon: Icons.add_location_alt_rounded,
+                        iconColor: const Color(0xFFFF9800),
+                        label: 'Parada extra',
+                        address: delivery.extraStopAddress!,
+                      ),
+                    ],
                     const SizedBox(height: AppSpacing.md),
                     _AddressRow(
                       icon: Icons.flag_rounded,

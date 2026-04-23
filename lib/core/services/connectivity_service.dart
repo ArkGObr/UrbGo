@@ -14,6 +14,18 @@ class ConnectivityService {
     final results = await _connectivity.checkConnectivity();
     return results.any((r) => r != ConnectivityResult.none);
   }
+
+  static Future<bool> ensureConnected(
+    BuildContext context, {
+    String message = 'Você está sem internet no momento.',
+  }) async {
+    final connected = await isConnected();
+    if (connected || !context.mounted) return connected;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+    return false;
+  }
 }
 
 /// Banner animado que aparece quando o dispositivo fica offline.
@@ -27,28 +39,57 @@ class OfflineBanner extends StatelessWidget {
     return StreamBuilder<List<ConnectivityResult>>(
       stream: ConnectivityService.stream,
       builder: (context, snap) {
-        final offline = snap.hasData &&
+        final offline =
+            snap.hasData &&
             snap.data!.every((r) => r == ConnectivityResult.none);
 
         return Column(
           children: [
             AnimatedContainer(
               duration: const Duration(milliseconds: 300),
-              height: offline ? 32 : 0,
+              height: offline ? 44 : 0,
               color: AppColors.error,
               child: offline
                   ? Center(
-                      child: Text(
-                        'Sem conexão com a internet',
-                        style: AppTypography.labelSmall.copyWith(
-                          color: Colors.white,
-                          fontSize: 11,
-                          letterSpacing: 0.3,
-                        ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            Icons.wifi_off_rounded,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Sem conexão. Algumas ações podem falhar.',
+                            style: AppTypography.labelSmall.copyWith(
+                              color: Colors.white,
+                              fontSize: 11,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ],
                       ),
                     )
                   : null,
             ),
+            if (offline)
+              Container(
+                width: double.infinity,
+                color: AppColors.surface,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
+                child: Text(
+                  'Você ainda pode navegar, mas criar pedidos, aceitar corridas e atualizar dados depende de internet.',
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.textSecondary,
+                    height: 1.35,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
             Expanded(child: child),
           ],
         );

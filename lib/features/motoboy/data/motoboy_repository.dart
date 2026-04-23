@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../client/domain/delivery_model.dart';
+import '../domain/earnings_dashboard.dart';
 import '../domain/motoboy_model.dart';
 
 class MotoboyRepository {
@@ -34,11 +35,14 @@ class MotoboyRepository {
   /// Ligar/desligar online (ao ligar, registra last_active_at e reseta nível de inatividade via trigger SQL)
   Future<void> setOnline(String id, bool online) async {
     final now = DateTime.now().toIso8601String();
-    await _db.from('motoboys').update({
-      'is_online': online,
-      'updated_at': now,
-      if (online) 'last_active_at': now,
-    }).eq('id', id);
+    await _db
+        .from('motoboys')
+        .update({
+          'is_online': online,
+          'updated_at': now,
+          if (online) 'last_active_at': now,
+        })
+        .eq('id', id);
   }
 
   /// Buscar corridas disponíveis por raio, filtradas pela categoria do motoboy
@@ -73,14 +77,11 @@ class MotoboyRepository {
 
     // Removido o fallback para forçar que o entregador veja APENAS as corridas da sua categoria.
 
-    final all =
-        (data as List).map((e) => DeliveryModel.fromJson(e)).toList();
+    final all = (data as List).map((e) => DeliveryModel.fromJson(e)).toList();
 
     // Filtrar por raio no cliente (Haversine)
     return all.where((d) {
-      final dist = _haversineDistanceKm(
-        lat, lng, d.pickupLat, d.pickupLng,
-      );
+      final dist = _haversineDistanceKm(lat, lng, d.pickupLat, d.pickupLng);
       return dist <= radiusKm;
     }).toList();
   }
@@ -102,12 +103,135 @@ class MotoboyRepository {
   Future<List<DeliveryModel>> getRunHistory(String motoboyId) async {
     final data = await _db
         .from('deliveries')
-        .select('*, motoboys(vehicle_plate, current_lat, current_lng, users(name, phone))')
+        .select(
+          '*, motoboys(vehicle_plate, current_lat, current_lng, users(name, phone))',
+        )
         .eq('motoboy_id', motoboyId)
         .inFilter('status', ['completed', 'cancelled'])
         .order('created_at', ascending: false)
         .limit(50);
     return (data as List).map((e) => DeliveryModel.fromJson(e)).toList();
+  }
+
+  Future<List<DeliveryModel>> getRunHistoryPage({
+    required String motoboyId,
+    required int offset,
+    int limit = 20,
+  }) async {
+    final data = await _db
+        .from('deliveries')
+        .select(
+          '*, motoboys(vehicle_plate, current_lat, current_lng, users(name, phone))',
+        )
+        .eq('motoboy_id', motoboyId)
+        .inFilter('status', ['completed', 'cancelled'])
+        .order('created_at', ascending: false)
+        .range(offset, offset + limit - 1);
+    return (data as List).map((e) => DeliveryModel.fromJson(e)).toList();
+  }
+
+  Future<EarningsDashboard> getEarningsDashboard(String motoboyId) async {
+    final since = DateTime.now()
+        .subtract(const Duration(days: 180))
+        .toIso8601String();
+    final data = await _db
+        .from('deliveries')
+        .select('value, commission, completed_at')
+        .eq('motoboy_id', motoboyId)
+        .eq('status', 'completed')
+        .gte('completed_at', since)
+        .order('completed_at', ascending: true);
+
+    final rows = (data as List)
+        .where((row) => row['completed_at'] != null)
+        .map(
+          (row) => (
+            completedAt: DateTime.parse(row['completed_at'] as String),
+            net:
+                ((row['value'] as num).toDouble() -
+                (row['commission'] as num).toDouble()),
+          ),
+        )
+        .toList();
+
+    final now = DateTime.now();
+
+    double totalForDays(int days) {
+      final cutoff = now.subtract(Duration(days: days));
+      return rows
+          .where((row) => row.completedAt.isAfter(cutoff))
+          .fold(0.0, (sum, row) => sum + row.net);
+    }
+
+    final dailyPoints = List.generate(7, (index) {
+      final day = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).subtract(Duration(days: 6 - index));
+      final total = rows
+          .where(
+            (row) =>
+                row.completedAt.year == day.year &&
+                row.completedAt.month == day.month &&
+                row.completedAt.day == day.day,
+          )
+          .fold(0.0, (sum, row) => sum + row.net);
+      const labels = ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'];
+      return EarningsPoint(label: labels[day.weekday % 7], value: total);
+    });
+
+    final weeklyPoints = List.generate(6, (index) {
+      final weekEnd = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).subtract(Duration(days: 7 * (5 - index)));
+      final weekStart = weekEnd.subtract(const Duration(days: 6));
+      final total = rows
+          .where(
+            (row) =>
+                !row.completedAt.isBefore(weekStart) &&
+                !row.completedAt.isAfter(weekEnd.add(const Duration(days: 1))),
+          )
+          .fold(0.0, (sum, row) => sum + row.net);
+      return EarningsPoint(label: 'S${index + 1}', value: total);
+    });
+
+    final monthlyPoints = List.generate(6, (index) {
+      final monthDate = DateTime(now.year, now.month - (5 - index), 1);
+      final total = rows
+          .where(
+            (row) =>
+                row.completedAt.year == monthDate.year &&
+                row.completedAt.month == monthDate.month,
+          )
+          .fold(0.0, (sum, row) => sum + row.net);
+      const labels = [
+        'Jan',
+        'Fev',
+        'Mar',
+        'Abr',
+        'Mai',
+        'Jun',
+        'Jul',
+        'Ago',
+        'Set',
+        'Out',
+        'Nov',
+        'Dez',
+      ];
+      return EarningsPoint(label: labels[monthDate.month - 1], value: total);
+    });
+
+    return EarningsDashboard(
+      today: totalForDays(1),
+      week: totalForDays(7),
+      month: totalForDays(30),
+      dailyPoints: dailyPoints,
+      weeklyPoints: weeklyPoints,
+      monthlyPoints: monthlyPoints,
+    );
   }
 
   // ── ACEITAR CORRIDA ──────────────────────────────────────
@@ -157,11 +281,7 @@ class MotoboyRepository {
   Future<void> abandonDelivery(String deliveryId) async {
     final updated = await _db
         .from('deliveries')
-        .update({
-          'motoboy_id': null,
-          'status': 'pending',
-          'accepted_at': null,
-        })
+        .update({'motoboy_id': null, 'status': 'pending', 'accepted_at': null})
         .eq('id', deliveryId)
         .eq('status', 'accepted')
         .select('id');
@@ -200,11 +320,14 @@ class MotoboyRepository {
           final pos = await Geolocator.getCurrentPosition(
             desiredAccuracy: LocationAccuracy.high,
           );
-          await _db.from('motoboys').update({
-            'current_lat': pos.latitude,
-            'current_lng': pos.longitude,
-            'updated_at': DateTime.now().toIso8601String(),
-          }).eq('id', motoboyId);
+          await _db
+              .from('motoboys')
+              .update({
+                'current_lat': pos.latitude,
+                'current_lng': pos.longitude,
+                'updated_at': DateTime.now().toIso8601String(),
+              })
+              .eq('id', motoboyId);
         } catch (_) {
           /* ignora erros de GPS */
         }
@@ -219,16 +342,17 @@ class MotoboyRepository {
 
   // ── Haversine ────────────────────────────────────────────
   double _haversineDistanceKm(
-    double lat1, double lng1, double lat2, double lng2,
+    double lat1,
+    double lng1,
+    double lat2,
+    double lng2,
   ) {
     const r = 6371.0;
     final dLat = _toRad(lat2 - lat1);
     final dLon = _toRad(lng2 - lng1);
-    final h = sin(dLat / 2) * sin(dLat / 2) +
-        cos(_toRad(lat1)) *
-            cos(_toRad(lat2)) *
-            sin(dLon / 2) *
-            sin(dLon / 2);
+    final h =
+        sin(dLat / 2) * sin(dLat / 2) +
+        cos(_toRad(lat1)) * cos(_toRad(lat2)) * sin(dLon / 2) * sin(dLon / 2);
     return r * 2 * asin(sqrt(h));
   }
 

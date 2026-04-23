@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/vehicle_categories.dart';
 import '../domain/delivery_model.dart';
@@ -21,6 +22,9 @@ class DeliveryRepository {
     required String paymentMethod,
     required double distanceKm,
     VehicleCategory vehicleCategory = VehicleCategory.motoboy,
+    String? extraStopAddress,
+    double? extraStopLat,
+    double? extraStopLng,
   }) async {
     final commission = value * 0.25;
     final data = await _db
@@ -39,6 +43,9 @@ class DeliveryRepository {
           'vehicle_category': vehicleCategory.info.id,
           'status': 'pending',
           'distance_km': double.parse(distanceKm.toStringAsFixed(2)),
+          if (extraStopAddress != null) 'extra_stop_address': extraStopAddress,
+          if (extraStopLat != null) 'extra_stop_lat': extraStopLat,
+          if (extraStopLng != null) 'extra_stop_lng': extraStopLng,
         })
         .select(_selectWithMotoboy)
         .single();
@@ -55,13 +62,72 @@ class DeliveryRepository {
     return (data as List).map((e) => DeliveryModel.fromJson(e)).toList();
   }
 
-  /// Cancelar entrega (apenas status pending)
+  Future<List<DeliveryModel>> getClientHistoryPage({
+    required String clientId,
+    required int offset,
+    int limit = 20,
+  }) async {
+    final data = await _db
+        .from('deliveries')
+        .select(_selectWithMotoboy)
+        .eq('client_id', clientId)
+        .inFilter('status', ['completed', 'cancelled'])
+        .order('created_at', ascending: false)
+        .range(offset, offset + limit - 1);
+    return (data as List).map((e) => DeliveryModel.fromJson(e)).toList();
+  }
+
+  /// Cancelar entrega (pendente, ou aceita há menos de 5 min)
   Future<void> cancelDelivery(String deliveryId) async {
-    await _db
+    // Tenta cancelar se pendente
+    var res = await _db
         .from('deliveries')
         .update({'status': 'cancelled'})
         .eq('id', deliveryId)
-        .eq('status', 'pending');
+        .eq('status', 'pending')
+        .select('id');
+
+    if ((res as List).isNotEmpty) return;
+
+    // Tenta cancelar se aceita há menos de 5 min
+    final cutoff = DateTime.now()
+        .subtract(const Duration(minutes: 5))
+        .toIso8601String();
+    res = await _db
+        .from('deliveries')
+        .update({'status': 'cancelled'})
+        .eq('id', deliveryId)
+        .eq('status', 'accepted')
+        .gte('accepted_at', cutoff)
+        .select('id');
+
+    if ((res as List).isEmpty) {
+      throw Exception(
+        'Não é possível cancelar após o entregador já estar a caminho há mais de 5 minutos.',
+      );
+    }
+  }
+
+  /// Upload de foto de confirmação de entrega
+  Future<String> uploadDeliveryPhoto(String deliveryId, File imageFile) async {
+    final path =
+        'deliveries/$deliveryId/${DateTime.now().millisecondsSinceEpoch}.jpg';
+    await _db.storage
+        .from('delivery-photos')
+        .upload(
+          path,
+          imageFile,
+          fileOptions: const FileOptions(
+            upsert: true,
+            contentType: 'image/jpeg',
+          ),
+        );
+    final url = _db.storage.from('delivery-photos').getPublicUrl(path);
+    await _db
+        .from('deliveries')
+        .update({'delivery_photo_url': url})
+        .eq('id', deliveryId);
+    return url;
   }
 
   /// Buscar uma entrega específica

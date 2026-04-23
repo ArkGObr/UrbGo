@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/onboarding_service.dart';
 import '../domain/auth_provider.dart';
 
 class SplashScreen extends ConsumerWidget {
@@ -13,6 +14,11 @@ class SplashScreen extends ConsumerWidget {
     // Este listener é um seguro extra caso o router não dispare.
     ref.listen(authNotifierProvider, (_, next) {
       if (next.isLoading) return;
+      final onboarding = ref.read(onboardingSeenProvider).valueOrNull;
+      if (onboarding == false) {
+        context.go('/onboarding');
+        return;
+      }
       final user = next.valueOrNull;
       if (user == null) {
         context.go('/login');

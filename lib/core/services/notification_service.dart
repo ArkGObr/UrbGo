@@ -44,11 +44,12 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   );
   await local
       .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>()
+        AndroidFlutterLocalNotificationsPlugin
+      >()
       ?.createNotificationChannel(_kAndroidChannel);
 
   final title = message.data['title'] as String? ?? 'UrbGo';
-  final body  = message.data['body']  as String? ?? '';
+  final body = message.data['body'] as String? ?? '';
   if (title.isEmpty) return;
 
   await local.show(
@@ -86,7 +87,7 @@ class NotificationService {
     required String Function(String id) motoboyActive,
   }) {
     _clientTrackingPath = clientTracking;
-    _motoboyActivePath  = motoboyActive;
+    _motoboyActivePath = motoboyActive;
   }
 
   Future<void> initialize() async {
@@ -109,7 +110,8 @@ class NotificationService {
     // 3. Criar canais Android
     final androidPlugin = _local
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
+          AndroidFlutterLocalNotificationsPlugin
+        >();
     await androidPlugin?.createNotificationChannel(_kAndroidChannel);
     await androidPlugin?.createNotificationChannel(_kReengagementChannel);
     await androidPlugin?.createNotificationChannel(
@@ -150,7 +152,8 @@ class NotificationService {
     try {
       await Supabase.instance.client
           .from('users')
-          .update({'fcm_token': token}).eq('id', userId);
+          .update({'fcm_token': token})
+          .eq('id', userId);
     } catch (e) {
       debugPrint('[FCM] Erro ao persistir token: $e');
     }
@@ -161,7 +164,8 @@ class NotificationService {
     try {
       await Supabase.instance.client
           .from('users')
-          .update({'fcm_token': null}).eq('id', userId);
+          .update({'fcm_token': null})
+          .eq('id', userId);
       await _fcm.deleteToken();
     } catch (_) {}
   }
@@ -183,7 +187,9 @@ class NotificationService {
           channelDescription: _kAndroidChannel.description,
           icon: 'ic_notification',
           color: const Color(0xFF99eb09),
-          largeIcon: const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'),
+          largeIcon: const DrawableResourceAndroidBitmap(
+            '@mipmap/launcher_icon',
+          ),
           importance: Importance.high,
           priority: Priority.high,
         ),
@@ -235,7 +241,8 @@ class NotificationService {
     // Android: usa Foreground Service para manter GPS ativo em segundo plano
     final androidPlugin = _local
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
+          AndroidFlutterLocalNotificationsPlugin
+        >();
     if (androidPlugin != null) {
       await androidPlugin.startForegroundService(
         9999,
@@ -243,7 +250,9 @@ class NotificationService {
         body,
         notificationDetails: androidDetails,
         payload: deliveryId,
-        foregroundServiceTypes: {AndroidServiceForegroundType.foregroundServiceTypeLocation},
+        foregroundServiceTypes: {
+          AndroidServiceForegroundType.foregroundServiceTypeLocation,
+        },
       );
     } else {
       await _local.show(
@@ -262,12 +271,38 @@ class NotificationService {
   Future<void> cancelOngoingRunNotification() async {
     final androidPlugin = _local
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
+          AndroidFlutterLocalNotificationsPlugin
+        >();
     if (androidPlugin != null) {
       await androidPlugin.stopForegroundService();
     } else {
       await _local.cancel(9999);
     }
+  }
+
+  Future<void> showClientAlert({
+    required String title,
+    required String body,
+    String? payload,
+  }) async {
+    await _local.show(
+      7777,
+      title,
+      body,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          _kAndroidChannel.id,
+          _kAndroidChannel.name,
+          channelDescription: _kAndroidChannel.description,
+          icon: 'ic_notification',
+          color: const Color(0xFF99eb09),
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+        iOS: const DarwinNotificationDetails(),
+      ),
+      payload: payload,
+    );
   }
 
   void _onLocalTap(NotificationResponse response) {
@@ -280,7 +315,7 @@ class NotificationService {
 
   void _handleRemoteNavigation(RemoteMessage message) {
     final deliveryId = message.data['deliveryId'] as String?;
-    final role       = message.data['role'] as String?;
+    final role = message.data['role'] as String?;
     _navigate(deliveryId, role);
   }
 
@@ -304,5 +339,6 @@ class NotificationService {
   }
 }
 
-final notificationServiceProvider =
-    Provider<NotificationService>((ref) => NotificationService());
+final notificationServiceProvider = Provider<NotificationService>(
+  (ref) => NotificationService(),
+);
