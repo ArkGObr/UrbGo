@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -32,36 +33,36 @@ class CreateDeliveryScreen extends ConsumerStatefulWidget {
 }
 
 class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
+  // ── Endereços ─────────────────────────────────────────────
   final _pickupCtrl = TextEditingController();
   final _deliveryCtrl = TextEditingController();
   final _mapController = MapController();
   final _pickupFocus = FocusNode();
   final _deliveryFocus = FocusNode();
+  final _extraStopCtrl = TextEditingController();
+  final _extraStopFocus = FocusNode();
+
+  // ── Detalhes ──────────────────────────────────────────────
+  final _recipientNameCtrl = TextEditingController();
+  final _recipientPhoneCtrl = TextEditingController();
+  final _notesCtrl = TextEditingController();
+  final _declaredValueCtrl = TextEditingController();
 
   // ── Stepper ──────────────────────────────────────────────
-  int _step = 0; // 0: Veículo, 1: Endereços, 2: Confirmar
+  int _step = 0;
 
   // ── Categoria ─────────────────────────────────────────────
   VehicleCategoryInfo? _selectedCategory;
+  bool get _isMotoTaxi =>
+      _selectedCategory?.category == VehicleCategory.mototaxi;
 
-  // ── Endereços ─────────────────────────────────────────────
-  String _paymentMethod = 'pix';
-  bool _isLoading = false;
-
+  // ── Endereços state ───────────────────────────────────────
   LatLng? _pickupLatLng;
   LatLng? _deliveryLatLng;
   double? _distanceKm;
   double? _deliveryValue;
-
-  // Parada extra (opcional)
-  final _extraStopCtrl = TextEditingController();
-  final _extraStopFocus = FocusNode();
-  LatLng? _extraStopLatLng;
-  List<AddressSuggestion> _extraStopSuggestions = [];
-  bool _loadingExtraStopSuggestions = false;
-  Timer? _extraStopDebounce;
-  bool _hasExtraStop = false;
-  bool _settingExtraStop = false;
+  String _paymentMethod = 'pix';
+  bool _isLoading = false;
 
   List<AddressSuggestion> _pickupSuggestions = [];
   List<AddressSuggestion> _deliverySuggestions = [];
@@ -69,17 +70,41 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
   bool _loadingDeliverySuggestions = false;
   Timer? _pickupDebounce;
   Timer? _deliveryDebounce;
+  bool _settingPickup = false;
+  bool _settingDelivery = false;
+
+  LatLng? _extraStopLatLng;
+  List<AddressSuggestion> _extraStopSuggestions = [];
+  bool _loadingExtraStopSuggestions = false;
+  Timer? _extraStopDebounce;
+  bool _hasExtraStop = false;
+  bool _settingExtraStop = false;
 
   final RouteService _routeService = RouteService();
   List<LatLng> _routePoints = [];
   RouteResult? _routeResult;
-
-  bool _settingPickup = false;
-  bool _settingDelivery = false;
-
   LatLng? _userLocation;
-
   SurgeInfo? _surgeInfo;
+
+  // ── Detalhes state ─────────────────────────────────────────
+  bool _isFragile = false;
+  int _helperCount = 0;
+  bool _roundTrip = false;
+  String? _cargoType;
+  DateTime? _scheduledFor;
+  bool _helmetAcknowledged = false;
+
+  // ── Stepper labels ─────────────────────────────────────────
+  List<String> get _stepLabels => _isMotoTaxi
+      ? ['Veículo', 'Rota', 'Segurança', 'Confirmar']
+      : ['Veículo', 'Endereços', 'Detalhes', 'Confirmar'];
+
+  bool get _canProceedFromDetails {
+    if (_isMotoTaxi) return _helmetAcknowledged;
+    final nameOk = _recipientNameCtrl.text.trim().isNotEmpty;
+    final phoneOk = _recipientPhoneCtrl.text.trim().length >= 10;
+    return nameOk && phoneOk;
+  }
 
   @override
   void initState() {
@@ -128,6 +153,10 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
     _pickupDebounce?.cancel();
     _deliveryDebounce?.cancel();
     _extraStopDebounce?.cancel();
+    _recipientNameCtrl.dispose();
+    _recipientPhoneCtrl.dispose();
+    _notesCtrl.dispose();
+    _declaredValueCtrl.dispose();
     super.dispose();
   }
 
@@ -139,7 +168,9 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
     final surge = await DynamicPricingService().getCurrentSurge();
     if (mounted) {
       setState(() => _surgeInfo = surge);
-      if (_pickupLatLng != null && _deliveryLatLng != null) _recalculate();
+      if (_pickupLatLng != null && _deliveryLatLng != null) {
+        _recalculate();
+      }
     }
   }
 
@@ -164,7 +195,7 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
   }
 
   // ─────────────────────────────────────────────────────────
-  // Address listeners & autocomplete
+  // Autocomplete
   // ─────────────────────────────────────────────────────────
 
   void _onPickupChanged() {
@@ -187,49 +218,8 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
 
   void _onExtraStopChanged() {
     if (_settingExtraStop) return;
-    if (_extraStopLatLng != null) {
-      setState(() => _extraStopLatLng = null);
-    }
+    if (_extraStopLatLng != null) setState(() => _extraStopLatLng = null);
     _scheduleExtraStopAutocomplete();
-  }
-
-  void _scheduleExtraStopAutocomplete() {
-    _extraStopDebounce?.cancel();
-    final query = _extraStopCtrl.text.trim();
-    if (query.length < 3) {
-      setState(() {
-        _extraStopSuggestions = [];
-        _loadingExtraStopSuggestions = false;
-      });
-      return;
-    }
-    setState(() => _loadingExtraStopSuggestions = true);
-    _extraStopDebounce = Timer(const Duration(milliseconds: 400), () async {
-      if (!mounted) return;
-      final suggestions = await ref
-          .read(geocodingServiceProvider)
-          .autocomplete(query, focusPoint: _userLocation);
-      if (!mounted) return;
-      if (_extraStopCtrl.text.trim() == query) {
-        setState(() {
-          _extraStopSuggestions = suggestions;
-          _loadingExtraStopSuggestions = false;
-        });
-      }
-    });
-  }
-
-  void _selectExtraStop(AddressSuggestion s) {
-    _extraStopDebounce?.cancel();
-    _settingExtraStop = true;
-    _extraStopCtrl.text = s.label;
-    _settingExtraStop = false;
-    _extraStopFocus.unfocus();
-    setState(() {
-      _extraStopLatLng = s.coordinates;
-      _extraStopSuggestions = [];
-      _loadingExtraStopSuggestions = false;
-    });
   }
 
   void _schedulePickupAutocomplete() {
@@ -284,6 +274,32 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
     });
   }
 
+  void _scheduleExtraStopAutocomplete() {
+    _extraStopDebounce?.cancel();
+    final query = _extraStopCtrl.text.trim();
+    if (query.length < 3) {
+      setState(() {
+        _extraStopSuggestions = [];
+        _loadingExtraStopSuggestions = false;
+      });
+      return;
+    }
+    setState(() => _loadingExtraStopSuggestions = true);
+    _extraStopDebounce = Timer(const Duration(milliseconds: 400), () async {
+      if (!mounted) return;
+      final suggestions = await ref
+          .read(geocodingServiceProvider)
+          .autocomplete(query, focusPoint: _userLocation);
+      if (!mounted) return;
+      if (_extraStopCtrl.text.trim() == query) {
+        setState(() {
+          _extraStopSuggestions = suggestions;
+          _loadingExtraStopSuggestions = false;
+        });
+      }
+    });
+  }
+
   void _selectPickup(AddressSuggestion s) {
     _pickupDebounce?.cancel();
     _settingPickup = true;
@@ -315,6 +331,19 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
       _loadingDeliverySuggestions = false;
     });
     _recalculate();
+  }
+
+  void _selectExtraStop(AddressSuggestion s) {
+    _extraStopDebounce?.cancel();
+    _settingExtraStop = true;
+    _extraStopCtrl.text = s.label;
+    _settingExtraStop = false;
+    _extraStopFocus.unfocus();
+    setState(() {
+      _extraStopLatLng = s.coordinates;
+      _extraStopSuggestions = [];
+      _loadingExtraStopSuggestions = false;
+    });
   }
 
   Future<void> _useCurrentLocation() async {
@@ -361,9 +390,7 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
     if (_pickupLatLng == null && _pickupCtrl.text.trim().isNotEmpty) {
       final r = await service.geocode(_pickupCtrl.text.trim());
       if (r == null) {
-        _showSnack(
-          'Endereço de coleta não encontrado. Selecione uma sugestão.',
-        );
+        _showSnack('Endereço de coleta não encontrado. Selecione uma sugestão.');
         return false;
       }
       _pickupLatLng = r;
@@ -371,9 +398,7 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
     if (_deliveryLatLng == null && _deliveryCtrl.text.trim().isNotEmpty) {
       final r = await service.geocode(_deliveryCtrl.text.trim());
       if (r == null) {
-        _showSnack(
-          'Endereço de entrega não encontrado. Selecione uma sugestão.',
-        );
+        _showSnack('Endereço de entrega não encontrado. Selecione uma sugestão.');
         return false;
       }
       _deliveryLatLng = r;
@@ -383,9 +408,7 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
         _extraStopCtrl.text.trim().isNotEmpty) {
       final r = await service.geocode(_extraStopCtrl.text.trim());
       if (r == null) {
-        _showSnack(
-          'Parada extra não encontrada. Selecione uma sugestão válida.',
-        );
+        _showSnack('Parada extra não encontrada. Selecione uma sugestão válida.');
         return false;
       }
       _extraStopLatLng = r;
@@ -412,20 +435,16 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
 
     final from = _pickupLatLng!;
     final to = _deliveryLatLng!;
-    final expectedExtraStop = _hasExtraStop && _extraStopLatLng != null
-        ? _extraStopLatLng
-        : null;
+    final expectedExtraStop =
+        _hasExtraStop && _extraStopLatLng != null ? _extraStopLatLng : null;
     final stops = [from, if (expectedExtraStop != null) expectedExtraStop, to];
 
     _fitMapBounds();
 
     try {
-      // Usa a rota real e considera a parada extra quando presente.
       final result = await _routeService.getRouteWithStops(stops);
-
       if (!mounted) return;
 
-      // Se os pontos não mudaram enquanto a requisição rodava:
       final sameExtraStop =
           (_extraStopLatLng == null && expectedExtraStop == null) ||
           _extraStopLatLng == expectedExtraStop;
@@ -478,20 +497,83 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
         return;
       }
     } else if (_step == 1) {
-      if (_pickupCtrl.text.trim().isEmpty ||
-          _deliveryCtrl.text.trim().isEmpty) {
+      if (_pickupCtrl.text.trim().isEmpty || _deliveryCtrl.text.trim().isEmpty) {
         _showSnack('Preencha os dois endereços');
+        return;
+      }
+    } else if (_step == 2) {
+      if (!_canProceedFromDetails) {
+        if (_isMotoTaxi) {
+          _showSnack('Confirme o uso de capacete para continuar');
+        } else {
+          _showSnack('Preencha o nome e telefone do destinatário');
+        }
         return;
       }
     }
     setState(() => _step++);
-    if (_step == 2 && _pickupLatLng != null && _deliveryLatLng != null) {
+    if (_step == 3 && _pickupLatLng != null && _deliveryLatLng != null) {
       _recalculate();
     }
   }
 
   void _prevStep() {
     if (_step > 0) setState(() => _step--);
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // Scheduling
+  // ─────────────────────────────────────────────────────────
+
+  Future<void> _pickScheduledTime() async {
+    final now = DateTime.now();
+    final minDate = now.add(const Duration(hours: 1));
+
+    final date = await showDatePicker(
+      context: context,
+      initialDate: minDate,
+      firstDate: minDate,
+      lastDate: now.add(const Duration(days: 30)),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.dark(
+            primary: AppColors.primary,
+            onPrimary: AppColors.textInverse,
+            surface: AppColors.surface,
+            onSurface: AppColors.textPrimary,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (date == null || !mounted) return;
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: minDate.hour, minute: 0),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.dark(
+            primary: AppColors.primary,
+            onPrimary: AppColors.textInverse,
+            surface: AppColors.surface,
+            onSurface: AppColors.textPrimary,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (time == null || !mounted) return;
+
+    setState(() {
+      _scheduledFor = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        time.hour,
+        time.minute,
+      );
+    });
   }
 
   // ─────────────────────────────────────────────────────────
@@ -509,11 +591,19 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
     try {
       final ok = await _ensureGeocoded();
       if (!ok || !mounted) return;
-
       if (_deliveryValue == null || _distanceKm == null) return;
 
       final user = ref.read(authNotifierProvider).valueOrNull;
       if (user == null) return;
+
+      final declaredValue = _declaredValueCtrl.text.trim().isNotEmpty
+          ? double.tryParse(
+              _declaredValueCtrl.text.trim().replaceAll(',', '.'),
+            )
+          : null;
+
+      final totalValue = _deliveryValue! +
+          PriceCalculator.helperFee(_helperCount);
 
       final delivery = await ref
           .read(deliveryRepositoryProvider)
@@ -525,7 +615,7 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
             deliveryAddress: _deliveryCtrl.text.trim(),
             deliveryLat: _deliveryLatLng!.latitude,
             deliveryLng: _deliveryLatLng!.longitude,
-            value: _deliveryValue!,
+            value: totalValue,
             paymentMethod: _paymentMethod,
             distanceKm: _distanceKm!,
             vehicleCategory:
@@ -536,6 +626,25 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
                 : null,
             extraStopLat: _extraStopLatLng?.latitude,
             extraStopLng: _extraStopLatLng?.longitude,
+            recipientName: _isMotoTaxi
+                ? null
+                : _recipientNameCtrl.text.trim().isNotEmpty
+                    ? _recipientNameCtrl.text.trim()
+                    : null,
+            recipientPhone: _isMotoTaxi
+                ? null
+                : _recipientPhoneCtrl.text.trim().isNotEmpty
+                    ? _recipientPhoneCtrl.text.trim()
+                    : null,
+            itemDescription: _notesCtrl.text.trim().isNotEmpty
+                ? _notesCtrl.text.trim()
+                : null,
+            isFragile: _isFragile,
+            declaredValue: declaredValue,
+            helperCount: _helperCount,
+            roundTrip: _roundTrip,
+            scheduledFor: _scheduledFor,
+            cargoType: _cargoType,
           );
 
       ref.invalidate(clientDeliveriesProvider);
@@ -572,6 +681,9 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final appBarTitle =
+        _isMotoTaxi ? 'Nova Corrida' : 'Nova Entrega';
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -584,21 +696,21 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
           ),
           onPressed: _step > 0 ? _prevStep : () => context.pop(),
         ),
-        title: Text('Nova Entrega', style: AppTypography.h3),
+        title: Text(appBarTitle, style: AppTypography.h3),
       ),
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
         behavior: HitTestBehavior.translucent,
         child: Column(
           children: [
-            // Stepper horizontal
             Padding(
               padding: AppSpacing.screenPadding,
-              child: _StepperHeader(currentStep: _step),
+              child: _StepperHeader(
+                currentStep: _step,
+                labels: _stepLabels,
+              ),
             ),
             const SizedBox(height: AppSpacing.lg),
-
-            // Step content
             Expanded(
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 250),
@@ -620,6 +732,8 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
       case 1:
         return _buildStepAddresses();
       case 2:
+        return _isMotoTaxi ? _buildStepSafety() : _buildStepDetails();
+      case 3:
         return _buildStepConfirm();
       default:
         return const SizedBox.shrink();
@@ -627,6 +741,7 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
   }
 
   // ── Etapa 1: Veículo ──────────────────────────────────────
+
   Widget _buildStepVehicle() {
     return SingleChildScrollView(
       key: const ValueKey('step_vehicle'),
@@ -656,8 +771,10 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
     );
   }
 
-  // ── Etapa 2: Endereços ────────────────────────────────────
+  // ── Etapa 2: Endereços / Rota ─────────────────────────────
+
   Widget _buildStepAddresses() {
+    final isMotoTaxi = _isMotoTaxi;
     return SingleChildScrollView(
       key: const ValueKey('step_addresses'),
       child: Column(
@@ -669,8 +786,15 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: AppSpacing.sm),
+
+                // Aviso bike distância
+                if (_selectedCategory?.category == VehicleCategory.bike &&
+                    _distanceKm != null &&
+                    _distanceKm! > 3)
+                  _BikeDistanceWarning(distanceKm: _distanceKm!),
+
                 _AddressField(
-                  label: 'Coleta',
+                  label: isMotoTaxi ? 'Origem' : 'Coleta',
                   hint: 'Rua, número, bairro, cidade',
                   controller: _pickupCtrl,
                   focusNode: _pickupFocus,
@@ -698,7 +822,7 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
                   ),
                 ),
                 _AddressField(
-                  label: 'Entrega',
+                  label: isMotoTaxi ? 'Destino' : 'Entrega',
                   hint: 'Rua, número, bairro, cidade',
                   controller: _deliveryCtrl,
                   focusNode: _deliveryFocus,
@@ -708,37 +832,40 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
                   onSuggestionTap: _selectDelivery,
                   leadingIcon: Icons.location_on_rounded,
                 ),
-                const SizedBox(height: AppSpacing.lg),
-                _ExtraStopSection(
-                  enabled: _hasExtraStop,
-                  controller: _extraStopCtrl,
-                  focusNode: _extraStopFocus,
-                  isConfirmed: _extraStopLatLng != null,
-                  isLoading: _loadingExtraStopSuggestions,
-                  suggestions: _extraStopSuggestions,
-                  onToggle: (enabled) {
-                    setState(() {
-                      _hasExtraStop = enabled;
-                      if (!enabled) {
-                        _extraStopCtrl.clear();
-                        _extraStopLatLng = null;
-                        _extraStopSuggestions = [];
-                        _loadingExtraStopSuggestions = false;
-                      }
-                    });
-                    _recalculate();
-                  },
-                  onSuggestionTap: (suggestion) {
-                    _selectExtraStop(suggestion);
-                    _recalculate();
-                  },
-                ),
+
+                // Parada extra (não para MotoTaxi)
+                if (!isMotoTaxi) ...[
+                  const SizedBox(height: AppSpacing.lg),
+                  _ExtraStopSection(
+                    enabled: _hasExtraStop,
+                    controller: _extraStopCtrl,
+                    focusNode: _extraStopFocus,
+                    isConfirmed: _extraStopLatLng != null,
+                    isLoading: _loadingExtraStopSuggestions,
+                    suggestions: _extraStopSuggestions,
+                    onToggle: (enabled) {
+                      setState(() {
+                        _hasExtraStop = enabled;
+                        if (!enabled) {
+                          _extraStopCtrl.clear();
+                          _extraStopLatLng = null;
+                          _extraStopSuggestions = [];
+                          _loadingExtraStopSuggestions = false;
+                        }
+                      });
+                      _recalculate();
+                    },
+                    onSuggestionTap: (suggestion) {
+                      _selectExtraStop(suggestion);
+                      _recalculate();
+                    },
+                  ),
+                ],
                 const SizedBox(height: AppSpacing.xl2),
               ],
             ),
           ),
 
-          // Preview mapa
           if (_pickupLatLng != null || _deliveryLatLng != null)
             SizedBox(height: 200, child: _buildMapPreview()),
 
@@ -770,8 +897,374 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
     );
   }
 
-  // ── Etapa 3: Confirmar ────────────────────────────────────
+  // ── Etapa 3a: Detalhes da entrega ─────────────────────────
+
+  Widget _buildStepDetails() {
+    final cat = _selectedCategory?.category;
+    final isVan = cat == VehicleCategory.van;
+    final isTruck = cat == VehicleCategory.truck;
+    final isBike = cat == VehicleCategory.bike;
+    final needsHelper = isVan || isTruck;
+    final maxHelpers = isTruck ? 3 : 2;
+
+    return SingleChildScrollView(
+      key: const ValueKey('step_details'),
+      padding: AppSpacing.screenPaddingFull,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Aviso bike distância
+          if (isBike && _distanceKm != null && _distanceKm! > 3)
+            _BikeDistanceWarning(distanceKm: _distanceKm!),
+
+          // ── Destinatário ────────────────────────────────
+          Text('Destinatário', style: AppTypography.h3),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'Quem vai receber a entrega?',
+            style: AppTypography.bodyMedium,
+          ),
+          const SizedBox(height: AppSpacing.xl),
+
+          _FormField(
+            label: 'Nome do destinatário',
+            hint: 'Ex: João Silva',
+            controller: _recipientNameCtrl,
+            icon: Icons.person_rounded,
+            keyboardType: TextInputType.name,
+            textCapitalization: TextCapitalization.words,
+            required: true,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          _FormField(
+            label: 'Telefone do destinatário',
+            hint: '(11) 99999-9999',
+            controller: _recipientPhoneCtrl,
+            icon: Icons.phone_rounded,
+            keyboardType: TextInputType.phone,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(11),
+            ],
+            required: true,
+          ),
+          const SizedBox(height: AppSpacing.xl2),
+
+          // ── Tipo de carga (Van/Truck) ────────────────────
+          if (needsHelper) ...[
+            Text('Tipo de carga', style: AppTypography.labelLarge),
+            const SizedBox(height: AppSpacing.md),
+            _CargoTypeSelector(
+              selected: _cargoType,
+              onSelected: (type) => setState(() => _cargoType = type),
+            ),
+            const SizedBox(height: AppSpacing.xl2),
+
+            // ── Ajudante ────────────────────────────────────
+            _HelperSelector(
+              count: _helperCount,
+              maxHelpers: maxHelpers,
+              onChanged: (c) => setState(() => _helperCount = c),
+            ),
+            const SizedBox(height: AppSpacing.xl2),
+          ],
+
+          // ── Opções adicionais ───────────────────────────
+          Text('Opções', style: AppTypography.labelLarge),
+          const SizedBox(height: AppSpacing.md),
+
+          // Round trip (Carro e Van)
+          if (cat == VehicleCategory.car || isVan) ...[
+            _ToggleOption(
+              icon: Icons.repeat_rounded,
+              label: 'Ida e volta',
+              description: 'O veículo retorna ao ponto de coleta após entregar',
+              value: _roundTrip,
+              onChanged: (v) => setState(() => _roundTrip = v),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+          ],
+
+          // Frágil (não para van/truck — eles têm helpers)
+          if (!needsHelper)
+            _ToggleOption(
+              icon: Icons.warning_amber_rounded,
+              label: 'Item frágil',
+              description: 'Avisar o entregador para manusear com cuidado',
+              value: _isFragile,
+              onChanged: (v) => setState(() => _isFragile = v),
+              activeColor: const Color(0xFFFF9800),
+            ),
+
+          const SizedBox(height: AppSpacing.xl2),
+
+          // ── Observações ─────────────────────────────────
+          Text('Observações', style: AppTypography.labelLarge),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            'Instruções para o entregador (portão, bloco, referência...)',
+            style: AppTypography.bodySmall,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          TextFormField(
+            controller: _notesCtrl,
+            maxLines: 3,
+            maxLength: 300,
+            style: AppTypography.bodyLarge.copyWith(
+              color: AppColors.textPrimary,
+            ),
+            decoration: const InputDecoration(
+              hintText: 'Ex: Portão azul, apartamento 302, interfone 0302...',
+              counterStyle: TextStyle(color: AppColors.textTertiary),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xl2),
+
+          // ── Valor declarado ─────────────────────────────
+          _DeclaredValueSection(
+            controller: _declaredValueCtrl,
+          ),
+          const SizedBox(height: AppSpacing.xl2),
+
+          // ── Agendamento (Van/Truck) ──────────────────────
+          if (needsHelper) ...[
+            _SchedulingSection(
+              scheduledFor: _scheduledFor,
+              onTap: _pickScheduledTime,
+              onClear: () => setState(() => _scheduledFor = null),
+            ),
+            const SizedBox(height: AppSpacing.xl2),
+          ],
+
+          PrimaryButton(
+            label: 'Continuar',
+            onPressed: _canProceedFromDetails ? _nextStep : null,
+          ),
+          const SizedBox(height: AppSpacing.xl2),
+        ],
+      ),
+    );
+  }
+
+  // ── Etapa 3b: Segurança (MotoTáxi) ───────────────────────
+
+  Widget _buildStepSafety() {
+    return SingleChildScrollView(
+      key: const ValueKey('step_safety'),
+      padding: AppSpacing.screenPaddingFull,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Card capacete
+          Container(
+            padding: AppSpacing.cardPadding,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFF9800).withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              border: Border.all(
+                color: const Color(0xFFFF9800).withValues(alpha: 0.3),
+              ),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFF9800).withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.sports_motorsports_rounded,
+                    color: Color(0xFFFF9800),
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Use o capacete sempre',
+                        style: AppTypography.labelLarge.copyWith(
+                          color: const Color(0xFFFF9800),
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      Text(
+                        'O uso de capacete é obrigatório por lei (Art. 244, CTB). O motorista é obrigado a fornecer ou garantir que você use um.',
+                        style: AppTypography.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xl),
+
+          // Card seguro
+          Container(
+            padding: AppSpacing.cardPadding,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              border: Border.all(
+                color: AppColors.primary.withValues(alpha: 0.2),
+              ),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.shield_rounded,
+                    color: AppColors.primary,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Sua segurança em primeiro lugar',
+                        style: AppTypography.labelLarge.copyWith(
+                          color: AppColors.primary,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      Text(
+                        'Durante a corrida você terá acesso ao botão de emergência SOS na tela de rastreamento.',
+                        style: AppTypography.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xl),
+
+          // Card dicas
+          Container(
+            padding: AppSpacing.cardPadding,
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              border: Border.all(color: AppColors.surfaceBorder),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Dicas de segurança', style: AppTypography.labelLarge),
+                const SizedBox(height: AppSpacing.md),
+                const _SafetyTip(
+                  icon: Icons.health_and_safety_rounded,
+                  text: 'Certifique-se de usar capacete homologado',
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                const _SafetyTip(
+                  icon: Icons.share_location_rounded,
+                  text: 'Você pode compartilhar sua rota durante a corrida',
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                const _SafetyTip(
+                  icon: Icons.emergency_rounded,
+                  text: 'O botão SOS estará sempre visível no tracking',
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xl2),
+
+          // Confirmação de capacete
+          GestureDetector(
+            onTap: () =>
+                setState(() => _helmetAcknowledged = !_helmetAcknowledged),
+            child: Container(
+              padding: AppSpacing.cardPadding,
+              decoration: BoxDecoration(
+                color: _helmetAcknowledged
+                    ? AppColors.primary.withValues(alpha: 0.1)
+                    : AppColors.surface,
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                border: Border.all(
+                  color: _helmetAcknowledged
+                      ? AppColors.primary
+                      : AppColors.surfaceBorder,
+                  width: _helmetAcknowledged ? 1.5 : 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 22,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      color: _helmetAcknowledged
+                          ? AppColors.primary
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: _helmetAcknowledged
+                            ? AppColors.primary
+                            : AppColors.textTertiary,
+                        width: 1.5,
+                      ),
+                    ),
+                    child: _helmetAcknowledged
+                        ? const Icon(
+                            Icons.check_rounded,
+                            size: 14,
+                            color: AppColors.textInverse,
+                          )
+                        : null,
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: Text(
+                      'Estou ciente do uso obrigatório de capacete e das regras de segurança',
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: _helmetAcknowledged
+                            ? AppColors.textPrimary
+                            : AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xl3),
+
+          PrimaryButton(
+            label: 'Buscar motorista',
+            onPressed: _helmetAcknowledged ? _nextStep : null,
+          ),
+          const SizedBox(height: AppSpacing.xl2),
+        ],
+      ),
+    );
+  }
+
+  // ── Etapa 4: Confirmar ────────────────────────────────────
+
   Widget _buildStepConfirm() {
+    final isMotoTaxi = _isMotoTaxi;
+    final helperFee = PriceCalculator.helperFee(_helperCount);
+    final totalValue = (_deliveryValue ?? 0) + helperFee;
+
     return SingleChildScrollView(
       key: const ValueKey('step_confirm'),
       padding: AppSpacing.screenPaddingFull,
@@ -785,7 +1278,7 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
             PricePreviewCard(
               category: _selectedCategory!,
               distanceKm: _distanceKm!,
-              totalValue: _deliveryValue!,
+              totalValue: totalValue,
               surgeInfo: _surgeInfo,
             ),
           const SizedBox(height: AppSpacing.xl2),
@@ -814,7 +1307,7 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
           ),
           const SizedBox(height: AppSpacing.xl3),
 
-          // Endereços resumo
+          // Resumo de endereços
           Container(
             padding: AppSpacing.cardPadding,
             decoration: BoxDecoration(
@@ -824,39 +1317,141 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
             ),
             child: Column(
               children: [
-                _SummaryAddressRow(
+                _SummaryRow(
                   icon: Icons.radio_button_on_rounded,
                   iconColor: AppColors.primary,
-                  label: 'Coleta',
-                  address: _pickupCtrl.text.trim(),
+                  label: isMotoTaxi ? 'Origem' : 'Coleta',
+                  value: _pickupCtrl.text.trim(),
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 const Divider(color: AppColors.surfaceBorder, height: 1),
                 const SizedBox(height: AppSpacing.sm),
-                _SummaryAddressRow(
+                _SummaryRow(
                   icon: Icons.location_on_rounded,
                   iconColor: AppColors.error,
-                  label: 'Entrega',
-                  address: _deliveryCtrl.text.trim(),
+                  label: isMotoTaxi ? 'Destino' : 'Entrega',
+                  value: _deliveryCtrl.text.trim(),
                 ),
                 if (_hasExtraStop && _extraStopCtrl.text.trim().isNotEmpty) ...[
                   const SizedBox(height: AppSpacing.sm),
                   const Divider(color: AppColors.surfaceBorder, height: 1),
                   const SizedBox(height: AppSpacing.sm),
-                  _SummaryAddressRow(
+                  _SummaryRow(
                     icon: Icons.add_location_alt_rounded,
                     iconColor: const Color(0xFFFF9800),
                     label: 'Parada extra',
-                    address: _extraStopCtrl.text.trim(),
+                    value: _extraStopCtrl.text.trim(),
                   ),
                 ],
               ],
             ),
           ),
-          const SizedBox(height: AppSpacing.xl3),
+          const SizedBox(height: AppSpacing.xl),
+
+          // Resumo detalhes
+          if (!isMotoTaxi) ...[
+            Container(
+              padding: AppSpacing.cardPadding,
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                border: Border.all(color: AppColors.surfaceBorder, width: 0.5),
+              ),
+              child: Column(
+                children: [
+                  if (_recipientNameCtrl.text.trim().isNotEmpty)
+                    _SummaryRow(
+                      icon: Icons.person_rounded,
+                      iconColor: AppColors.textSecondary,
+                      label: 'Destinatário',
+                      value: _recipientNameCtrl.text.trim(),
+                    ),
+                  if (_recipientPhoneCtrl.text.trim().isNotEmpty) ...[
+                    const SizedBox(height: AppSpacing.sm),
+                    const Divider(color: AppColors.surfaceBorder, height: 1),
+                    const SizedBox(height: AppSpacing.sm),
+                    _SummaryRow(
+                      icon: Icons.phone_rounded,
+                      iconColor: AppColors.textSecondary,
+                      label: 'Telefone',
+                      value: _recipientPhoneCtrl.text.trim(),
+                    ),
+                  ],
+                  if (_cargoType != null) ...[
+                    const SizedBox(height: AppSpacing.sm),
+                    const Divider(color: AppColors.surfaceBorder, height: 1),
+                    const SizedBox(height: AppSpacing.sm),
+                    _SummaryRow(
+                      icon: Icons.inventory_2_rounded,
+                      iconColor: AppColors.textSecondary,
+                      label: 'Tipo de carga',
+                      value: _cargoTypeLabel(_cargoType),
+                    ),
+                  ],
+                  if (_helperCount > 0) ...[
+                    const SizedBox(height: AppSpacing.sm),
+                    const Divider(color: AppColors.surfaceBorder, height: 1),
+                    const SizedBox(height: AppSpacing.sm),
+                    _SummaryRow(
+                      icon: Icons.people_rounded,
+                      iconColor: const Color(0xFFFF9800),
+                      label: 'Ajudantes',
+                      value: '$_helperCount ajudante${_helperCount > 1 ? 's' : ''} (+R\$ ${helperFee.toStringAsFixed(0)})',
+                    ),
+                  ],
+                  if (_isFragile) ...[
+                    const SizedBox(height: AppSpacing.sm),
+                    const Divider(color: AppColors.surfaceBorder, height: 1),
+                    const SizedBox(height: AppSpacing.sm),
+                    const _SummaryRow(
+                      icon: Icons.warning_amber_rounded,
+                      iconColor: Color(0xFFFF9800),
+                      label: 'Atenção',
+                      value: 'Item frágil',
+                    ),
+                  ],
+                  if (_roundTrip) ...[
+                    const SizedBox(height: AppSpacing.sm),
+                    const Divider(color: AppColors.surfaceBorder, height: 1),
+                    const SizedBox(height: AppSpacing.sm),
+                    const _SummaryRow(
+                      icon: Icons.repeat_rounded,
+                      iconColor: AppColors.primary,
+                      label: 'Trajeto',
+                      value: 'Ida e volta',
+                    ),
+                  ],
+                  if (_scheduledFor != null) ...[
+                    const SizedBox(height: AppSpacing.sm),
+                    const Divider(color: AppColors.surfaceBorder, height: 1),
+                    const SizedBox(height: AppSpacing.sm),
+                    _SummaryRow(
+                      icon: Icons.event_rounded,
+                      iconColor: AppColors.primary,
+                      label: 'Agendamento',
+                      value: _scheduledForLabel(_scheduledFor!),
+                    ),
+                  ],
+                  if (_notesCtrl.text.trim().isNotEmpty) ...[
+                    const SizedBox(height: AppSpacing.sm),
+                    const Divider(color: AppColors.surfaceBorder, height: 1),
+                    const SizedBox(height: AppSpacing.sm),
+                    _SummaryRow(
+                      icon: Icons.notes_rounded,
+                      iconColor: AppColors.textSecondary,
+                      label: 'Obs.',
+                      value: _notesCtrl.text.trim(),
+                      maxLines: 3,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xl),
+          ],
 
           PrimaryButton(
-            label: 'Confirmar Pedido',
+            label: isMotoTaxi ? 'Confirmar Corrida' : 'Confirmar Pedido',
             onPressed: _isLoading ? null : _submit,
             isLoading: _isLoading,
           ),
@@ -865,6 +1460,28 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
       ),
     );
   }
+
+  String _cargoTypeLabel(String? type) => switch (type) {
+    'furniture' => 'Móveis',
+    'appliances' => 'Eletrodomésticos',
+    'construction' => 'Material de obra',
+    'other' => 'Outros',
+    _ => 'Geral',
+  };
+
+  String _scheduledForLabel(DateTime d) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(d.year, d.month, d.day);
+    final timeStr =
+        '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    if (day == today) return 'Hoje às $timeStr';
+    final tomorrow = today.add(const Duration(days: 1));
+    if (day == tomorrow) return 'Amanhã às $timeStr';
+    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')} às $timeStr';
+  }
+
+  // ── Mapa preview ──────────────────────────────────────────
 
   Widget _buildMapPreview() {
     final center = _pickupLatLng ?? _deliveryLatLng!;
@@ -901,7 +1518,7 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
                           ],
                         ),
                         child: const Icon(
-                          Icons.store_rounded,
+                          Icons.radio_button_on_rounded,
                           color: Colors.white,
                           size: 18,
                         ),
@@ -944,9 +1561,9 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
                           border: Border.all(color: Colors.white, width: 3),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(
-                                0xFFFF9800,
-                              ).withValues(alpha: 0.4),
+                              color: const Color(0xFFFF9800).withValues(
+                                alpha: 0.4,
+                              ),
                               blurRadius: 8,
                               spreadRadius: 2,
                             ),
@@ -964,13 +1581,11 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
               if (_routePoints.isNotEmpty)
                 PolylineLayer(
                   polylines: [
-                    // Sombra da rota
                     Polyline(
                       points: _routePoints,
                       color: AppColors.primary.withValues(alpha: 0.15),
                       strokeWidth: 10,
                     ),
-                    // Rota principal
                     Polyline(
                       points: _routePoints,
                       color: AppColors.primary,
@@ -981,8 +1596,6 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
             ],
           ),
         ),
-
-        // Route info badges (top right)
         if (_routeResult != null)
           Positioned(
             top: 12,
@@ -990,14 +1603,12 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                // Distância
                 _RouteInfoBadge(
                   icon: Icons.route_rounded,
                   label: _routeResult!.formattedDistance,
                   color: AppColors.primary,
                 ),
                 const SizedBox(height: 6),
-                // Tempo estimado
                 _RouteInfoBadge(
                   icon: Icons.schedule_rounded,
                   label: _routeResult!.formattedDuration,
@@ -1012,27 +1623,27 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Stepper Header
+// Stepper Header (agora 4 steps)
 // ─────────────────────────────────────────────────────────────
 
 class _StepperHeader extends StatelessWidget {
   final int currentStep;
+  final List<String> labels;
 
-  const _StepperHeader({required this.currentStep});
+  const _StepperHeader({required this.currentStep, required this.labels});
 
   @override
   Widget build(BuildContext context) {
-    const labels = ['Veículo', 'Endereços', 'Confirmar'];
     return Row(
       children: [
-        for (int i = 0; i < 3; i++) ...[
+        for (int i = 0; i < labels.length; i++) ...[
           _StepDot(
             number: i + 1,
             label: labels[i],
             isActive: currentStep == i,
             isCompleted: currentStep > i,
           ),
-          if (i < 2)
+          if (i < labels.length - 1)
             Expanded(
               child: Container(
                 height: 1,
@@ -1062,17 +1673,16 @@ class _StepDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = (isActive || isCompleted)
-        ? AppColors.primary
-        : AppColors.textTertiary;
+    final color =
+        (isActive || isCompleted) ? AppColors.primary : AppColors.textTertiary;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          width: 28,
-          height: 28,
+          width: 26,
+          height: 26,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: isCompleted
@@ -1086,19 +1696,25 @@ class _StepDot extends StatelessWidget {
             child: isCompleted
                 ? const Icon(
                     Icons.check_rounded,
-                    size: 14,
+                    size: 13,
                     color: AppColors.textInverse,
                   )
                 : Text(
                     '$number',
-                    style: AppTypography.labelSmall.copyWith(color: color),
+                    style: AppTypography.labelSmall.copyWith(
+                      color: color,
+                      fontSize: 11,
+                    ),
                   ),
           ),
         ),
         const SizedBox(height: 4),
         Text(
           label,
-          style: AppTypography.labelSmall.copyWith(color: color, fontSize: 10),
+          style: AppTypography.labelSmall.copyWith(
+            color: color,
+            fontSize: 9,
+          ),
         ),
       ],
     );
@@ -1106,7 +1722,7 @@ class _StepDot extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Address Field with autocomplete
+// Address Field
 // ─────────────────────────────────────────────────────────────
 
 class _AddressField extends StatelessWidget {
@@ -1187,6 +1803,10 @@ class _AddressField extends StatelessWidget {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────
+// Extra Stop Section
+// ─────────────────────────────────────────────────────────────
 
 class _ExtraStopSection extends StatelessWidget {
   final bool enabled;
@@ -1291,7 +1911,11 @@ class _SuggestionsCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(color: AppColors.surfaceBorder),
         boxShadow: const [
-          BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4)),
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 8,
+            offset: Offset(0, 4),
+          ),
         ],
       ),
       child: ListView.separated(
@@ -1346,6 +1970,574 @@ class _SuggestionsCard extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Form Field
+// ─────────────────────────────────────────────────────────────
+
+class _FormField extends StatelessWidget {
+  final String label;
+  final String hint;
+  final TextEditingController controller;
+  final IconData icon;
+  final TextInputType? keyboardType;
+  final TextCapitalization textCapitalization;
+  final List<TextInputFormatter>? inputFormatters;
+  final bool required;
+
+  const _FormField({
+    required this.label,
+    required this.hint,
+    required this.controller,
+    required this.icon,
+    this.keyboardType,
+    this.textCapitalization = TextCapitalization.none,
+    this.inputFormatters,
+    this.required = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(label, style: AppTypography.labelLarge),
+            if (required) ...[
+              const SizedBox(width: 4),
+              Text(
+                '*',
+                style: AppTypography.labelLarge.copyWith(
+                  color: AppColors.error,
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        TextFormField(
+          controller: controller,
+          keyboardType: keyboardType,
+          textCapitalization: textCapitalization,
+          inputFormatters: inputFormatters,
+          style: AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
+          decoration: InputDecoration(
+            hintText: hint,
+            prefixIcon: Icon(icon, size: 20, color: AppColors.textTertiary),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Cargo Type Selector
+// ─────────────────────────────────────────────────────────────
+
+class _CargoTypeSelector extends StatelessWidget {
+  final String? selected;
+  final void Function(String) onSelected;
+
+  const _CargoTypeSelector({
+    required this.selected,
+    required this.onSelected,
+  });
+
+  static const _types = [
+    ('furniture', Icons.weekend_rounded, 'Móveis'),
+    ('appliances', Icons.kitchen_rounded, 'Eletrodomésticos'),
+    ('construction', Icons.construction_rounded, 'Material de obra'),
+    ('other', Icons.category_rounded, 'Outros'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.sm,
+      children: _types.map((t) {
+        final (id, icon, label) = t;
+        final isSelected = selected == id;
+        return GestureDetector(
+          onTap: () => onSelected(id),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.md,
+              vertical: AppSpacing.sm,
+            ),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? AppColors.primary.withValues(alpha: 0.12)
+                  : AppColors.surface,
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+              border: Border.all(
+                color: isSelected
+                    ? AppColors.primary
+                    : AppColors.surfaceBorder,
+                width: isSelected ? 1.5 : 1,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  size: 16,
+                  color: isSelected
+                      ? AppColors.primary
+                      : AppColors.textSecondary,
+                ),
+                const SizedBox(width: AppSpacing.xs),
+                Text(
+                  label,
+                  style: AppTypography.labelSmall.copyWith(
+                    color: isSelected
+                        ? AppColors.primary
+                        : AppColors.textSecondary,
+                    fontWeight:
+                        isSelected ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Helper Selector
+// ─────────────────────────────────────────────────────────────
+
+class _HelperSelector extends StatelessWidget {
+  final int count;
+  final int maxHelpers;
+  final void Function(int) onChanged;
+
+  const _HelperSelector({
+    required this.count,
+    required this.maxHelpers,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: AppSpacing.cardPadding,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.surfaceBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.people_rounded,
+                color: Color(0xFFFF9800),
+                size: 18,
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Text('Ajudante para carga/descarga', style: AppTypography.labelLarge),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'Necessário para móveis, eletrodomésticos pesados e mudanças',
+            style: AppTypography.bodySmall,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Row(
+            children: [
+              for (int i = 0; i <= maxHelpers; i++) ...[
+                if (i > 0) const SizedBox(width: AppSpacing.sm),
+                _HelperOption(
+                  value: i,
+                  selected: count == i,
+                  onTap: () => onChanged(i),
+                ),
+              ],
+            ],
+          ),
+          if (count > 0) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: AppSpacing.sm,
+              ),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF9800).withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.add_circle_outline_rounded,
+                    size: 14,
+                    color: Color(0xFFFF9800),
+                  ),
+                  const SizedBox(width: AppSpacing.xs),
+                  Text(
+                    '+R\$ ${(count * 15).toStringAsFixed(0)} por ajudante',
+                    style: AppTypography.labelSmall.copyWith(
+                      color: const Color(0xFFFF9800),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _HelperOption extends StatelessWidget {
+  final int value;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _HelperOption({
+    required this.value,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        width: 52,
+        height: 44,
+        decoration: BoxDecoration(
+          color: selected
+              ? const Color(0xFFFF9800).withValues(alpha: 0.15)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          border: Border.all(
+            color: selected
+                ? const Color(0xFFFF9800)
+                : AppColors.surfaceBorder,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              value == 0 ? 'Sem' : '$value',
+              style: AppTypography.labelLarge.copyWith(
+                color: selected
+                    ? const Color(0xFFFF9800)
+                    : AppColors.textSecondary,
+                fontSize: 14,
+              ),
+            ),
+            if (value > 0)
+              Text(
+                value == 1 ? 'ajudante' : 'ajudantes',
+                style: AppTypography.bodySmall.copyWith(fontSize: 8),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Toggle Option
+// ─────────────────────────────────────────────────────────────
+
+class _ToggleOption extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String description;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  final Color? activeColor;
+
+  const _ToggleOption({
+    required this.icon,
+    required this.label,
+    required this.description,
+    required this.value,
+    required this.onChanged,
+    this.activeColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = activeColor ?? AppColors.primary;
+    return GestureDetector(
+      onTap: () => onChanged(!value),
+      child: Container(
+        padding: AppSpacing.cardPadding,
+        decoration: BoxDecoration(
+          color: value ? color.withValues(alpha: 0.07) : AppColors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          border: Border.all(
+            color: value ? color.withValues(alpha: 0.4) : AppColors.surfaceBorder,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 20,
+              color: value ? color : AppColors.textSecondary,
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: AppTypography.labelLarge.copyWith(
+                      color: value ? color : AppColors.textPrimary,
+                    ),
+                  ),
+                  Text(description, style: AppTypography.bodySmall),
+                ],
+              ),
+            ),
+            Switch.adaptive(
+              value: value,
+              activeTrackColor: color.withValues(alpha: 0.35),
+              activeThumbColor: color,
+              onChanged: onChanged,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Declared Value Section
+// ─────────────────────────────────────────────────────────────
+
+class _DeclaredValueSection extends StatelessWidget {
+  final TextEditingController controller;
+
+  const _DeclaredValueSection({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Valor declarado', style: AppTypography.labelLarge),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          'Opcional. Informe o valor do item para fins de seguro pessoal.',
+          style: AppTypography.bodySmall,
+        ),
+        const SizedBox(height: AppSpacing.md),
+        TextFormField(
+          controller: controller,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+            LengthLimitingTextInputFormatter(10),
+          ],
+          style: AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
+          decoration: const InputDecoration(
+            hintText: 'Ex: 150,00',
+            prefixIcon: Icon(
+              Icons.attach_money_rounded,
+              size: 20,
+              color: AppColors.textTertiary,
+            ),
+            prefixText: 'R\$ ',
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Scheduling Section
+// ─────────────────────────────────────────────────────────────
+
+class _SchedulingSection extends StatelessWidget {
+  final DateTime? scheduledFor;
+  final VoidCallback onTap;
+  final VoidCallback onClear;
+
+  const _SchedulingSection({
+    required this.scheduledFor,
+    required this.onTap,
+    required this.onClear,
+  });
+
+  String _formatDate(DateTime d) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(d.year, d.month, d.day);
+    final timeStr =
+        '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    if (day == today) return 'Hoje às $timeStr';
+    final tomorrow = today.add(const Duration(days: 1));
+    if (day == tomorrow) return 'Amanhã às $timeStr';
+    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')} às $timeStr';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: AppSpacing.cardPadding,
+        decoration: BoxDecoration(
+          color: scheduledFor != null
+              ? AppColors.primary.withValues(alpha: 0.07)
+              : AppColors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          border: Border.all(
+            color: scheduledFor != null
+                ? AppColors.primary.withValues(alpha: 0.4)
+                : AppColors.surfaceBorder,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.event_rounded,
+              size: 20,
+              color: scheduledFor != null
+                  ? AppColors.primary
+                  : AppColors.textSecondary,
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Agendar para depois',
+                    style: AppTypography.labelLarge.copyWith(
+                      color: scheduledFor != null
+                          ? AppColors.primary
+                          : AppColors.textPrimary,
+                    ),
+                  ),
+                  Text(
+                    scheduledFor != null
+                        ? _formatDate(scheduledFor!)
+                        : 'Toque para escolher data e hora',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: scheduledFor != null
+                          ? AppColors.primary
+                          : AppColors.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (scheduledFor != null)
+              GestureDetector(
+                onTap: onClear,
+                child: const Icon(
+                  Icons.close_rounded,
+                  size: 18,
+                  color: AppColors.textTertiary,
+                ),
+              )
+            else
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: AppColors.textTertiary,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Bike Distance Warning
+// ─────────────────────────────────────────────────────────────
+
+class _BikeDistanceWarning extends StatelessWidget {
+  final double distanceKm;
+
+  const _BikeDistanceWarning({required this.distanceKm});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.lg),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFF9800).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(
+          color: const Color(0xFFFF9800).withValues(alpha: 0.3),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.warning_amber_rounded,
+            color: Color(0xFFFF9800),
+            size: 20,
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(
+              'Bike ideal para até 3 km. Sua rota tem ${distanceKm.toStringAsFixed(1)} km — a entrega pode demorar mais.',
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Safety Tip
+// ─────────────────────────────────────────────────────────────
+
+class _SafetyTip extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _SafetyTip({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: AppColors.textSecondary),
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: Text(text, style: AppTypography.bodySmall),
+        ),
+      ],
     );
   }
 }
@@ -1410,20 +2602,22 @@ class _PaymentChip extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Summary Address Row (step 3)
+// Summary Row (confirm step)
 // ─────────────────────────────────────────────────────────────
 
-class _SummaryAddressRow extends StatelessWidget {
+class _SummaryRow extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
   final String label;
-  final String address;
+  final String value;
+  final int maxLines;
 
-  const _SummaryAddressRow({
+  const _SummaryRow({
     required this.icon,
     required this.iconColor,
     required this.label,
-    required this.address,
+    required this.value,
+    this.maxLines = 2,
   });
 
   @override
@@ -1444,11 +2638,11 @@ class _SummaryAddressRow extends StatelessWidget {
                 ),
               ),
               Text(
-                address,
+                value,
                 style: AppTypography.bodyMedium.copyWith(
                   color: AppColors.textPrimary,
                 ),
-                maxLines: 2,
+                maxLines: maxLines,
                 overflow: TextOverflow.ellipsis,
               ),
             ],
@@ -1460,7 +2654,7 @@ class _SummaryAddressRow extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Route Info Badge (distance / time on map)
+// Route Info Badge
 // ─────────────────────────────────────────────────────────────
 
 class _RouteInfoBadge extends StatelessWidget {

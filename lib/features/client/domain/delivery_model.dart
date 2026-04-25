@@ -69,6 +69,7 @@ class DeliveryModel {
   final DateTime createdAt;
   final DateTime? acceptedAt;
   final DateTime? completedAt;
+
   // Join com motoboys (opcional)
   final String? motoboyName;
   final String? motoboyPhone;
@@ -78,12 +79,31 @@ class DeliveryModel {
   final double? motoboyAvgRating;
   final int? motoboyTotalRatings;
   final double? distanceKm;
+
   // Parada extra (multi-stop simplificado)
   final String? extraStopAddress;
   final double? extraStopLat;
   final double? extraStopLng;
+
   // Foto de confirmação de entrega
   final String? deliveryPhotoUrl;
+
+  // ── Novos campos por categoria ─────────────────────────────
+
+  // Informações do destinatário
+  final String? recipientName;
+  final String? recipientPhone;
+
+  // Detalhes do item/carga
+  final String? itemDescription;
+  final bool isFragile;
+  final double? declaredValue;
+
+  // Serviços adicionais
+  final int helperCount;
+  final bool roundTrip;
+  final DateTime? scheduledFor;
+  final String? cargoType; // 'furniture' | 'appliances' | 'construction' | 'other'
 
   const DeliveryModel({
     required this.id,
@@ -115,11 +135,18 @@ class DeliveryModel {
     this.extraStopLat,
     this.extraStopLng,
     this.deliveryPhotoUrl,
+    this.recipientName,
+    this.recipientPhone,
+    this.itemDescription,
+    this.isFragile = false,
+    this.declaredValue,
+    this.helperCount = 0,
+    this.roundTrip = false,
+    this.scheduledFor,
+    this.cargoType,
   });
 
   factory DeliveryModel.fromJson(Map<String, dynamic> json) {
-    // O join com motoboys pode vir como sub-objeto ou
-    // o motoboy_id pode referenciar a tabela users
     final motoboy = json['motoboys'] as Map<String, dynamic>?;
     final users = json['users'] as Map<String, dynamic>?;
 
@@ -169,6 +196,17 @@ class DeliveryModel {
       extraStopLat: (json['extra_stop_lat'] as num?)?.toDouble(),
       extraStopLng: (json['extra_stop_lng'] as num?)?.toDouble(),
       deliveryPhotoUrl: json['delivery_photo_url'] as String?,
+      recipientName: json['recipient_name'] as String?,
+      recipientPhone: json['recipient_phone'] as String?,
+      itemDescription: json['item_description'] as String?,
+      isFragile: (json['is_fragile'] as bool?) ?? false,
+      declaredValue: (json['declared_value'] as num?)?.toDouble(),
+      helperCount: (json['helper_count'] as int?) ?? 0,
+      roundTrip: (json['is_round_trip'] as bool?) ?? false,
+      scheduledFor: json['scheduled_for'] != null
+          ? DateTime.parse(json['scheduled_for'] as String)
+          : null,
+      cargoType: json['cargo_type'] as String?,
     );
   }
 
@@ -202,6 +240,15 @@ class DeliveryModel {
     double? extraStopLat,
     double? extraStopLng,
     String? deliveryPhotoUrl,
+    String? recipientName,
+    String? recipientPhone,
+    String? itemDescription,
+    bool? isFragile,
+    double? declaredValue,
+    int? helperCount,
+    bool? roundTrip,
+    DateTime? scheduledFor,
+    String? cargoType,
   }) {
     return DeliveryModel(
       id: id ?? this.id,
@@ -233,6 +280,15 @@ class DeliveryModel {
       extraStopLat: extraStopLat ?? this.extraStopLat,
       extraStopLng: extraStopLng ?? this.extraStopLng,
       deliveryPhotoUrl: deliveryPhotoUrl ?? this.deliveryPhotoUrl,
+      recipientName: recipientName ?? this.recipientName,
+      recipientPhone: recipientPhone ?? this.recipientPhone,
+      itemDescription: itemDescription ?? this.itemDescription,
+      isFragile: isFragile ?? this.isFragile,
+      declaredValue: declaredValue ?? this.declaredValue,
+      helperCount: helperCount ?? this.helperCount,
+      roundTrip: roundTrip ?? this.roundTrip,
+      scheduledFor: scheduledFor ?? this.scheduledFor,
+      cargoType: cargoType ?? this.cargoType,
     );
   }
 
@@ -255,7 +311,43 @@ class DeliveryModel {
     totalRatings: motoboyTotalRatings ?? 0,
   );
 
-  // Pode cancelar se pendente, ou se aceito há menos de 5 minutos
+  bool get isMotoTaxi => vehicleCategory == VehicleCategory.mototaxi;
+
+  /// Labels contextuais por categoria (corrida vs entrega)
+  String get statusLabelForCategory => switch (status) {
+    DeliveryStatus.pending => isMotoTaxi ? 'Aguardando motorista' : 'Aguardando entregador',
+    DeliveryStatus.accepted => isMotoTaxi ? 'Motorista a caminho' : 'Entregador a caminho',
+    DeliveryStatus.inProgress => isMotoTaxi ? 'Corrida em andamento' : 'Em rota de entrega',
+    DeliveryStatus.completed => isMotoTaxi ? 'Corrida concluída' : 'Entregue',
+    DeliveryStatus.cancelled => 'Cancelado',
+  };
+
+  String get pickupLabel => isMotoTaxi ? 'Origem' : 'Coleta';
+  String get deliveryLabel => isMotoTaxi ? 'Destino' : 'Entrega';
+  String get driverLabel => isMotoTaxi ? 'Motorista' : 'Entregador';
+  String get serviceLabel => isMotoTaxi ? 'Corrida' : 'Entrega';
+
+  String get cargoTypeLabel => switch (cargoType) {
+    'furniture' => 'Móveis',
+    'appliances' => 'Eletrodomésticos',
+    'construction' => 'Material de obra',
+    'other' => 'Outros',
+    _ => 'Geral',
+  };
+
+  String get scheduledForLabel {
+    if (scheduledFor == null) return 'Imediato';
+    final d = scheduledFor!;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(d.year, d.month, d.day);
+    final timeStr = '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    if (day == today) return 'Hoje às $timeStr';
+    final tomorrow = today.add(const Duration(days: 1));
+    if (day == tomorrow) return 'Amanhã às $timeStr';
+    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')} às $timeStr';
+  }
+
   bool get canCancel {
     if (status == DeliveryStatus.pending) return true;
     if (status == DeliveryStatus.accepted && acceptedAt != null) {
@@ -264,11 +356,14 @@ class DeliveryModel {
     return false;
   }
 
-  // Indica se o cancelamento tem "custo moral" (aceito dentro da janela)
   bool get isCancelWithPenaltyWarning =>
       status == DeliveryStatus.accepted && canCancel;
+
   bool get isActive =>
       status == DeliveryStatus.pending ||
       status == DeliveryStatus.accepted ||
       status == DeliveryStatus.inProgress;
+
+  bool get isScheduled => scheduledFor != null;
+  bool get hasHelpers => helperCount > 0;
 }

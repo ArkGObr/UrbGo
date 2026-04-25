@@ -25,6 +25,16 @@ class DeliveryRepository {
     String? extraStopAddress,
     double? extraStopLat,
     double? extraStopLng,
+    // Campos por categoria
+    String? recipientName,
+    String? recipientPhone,
+    String? itemDescription,
+    bool isFragile = false,
+    double? declaredValue,
+    int helperCount = 0,
+    bool roundTrip = false,
+    DateTime? scheduledFor,
+    String? cargoType,
   }) async {
     final commission = value * 0.25;
     final data = await _db
@@ -46,6 +56,16 @@ class DeliveryRepository {
           if (extraStopAddress != null) 'extra_stop_address': extraStopAddress,
           if (extraStopLat != null) 'extra_stop_lat': extraStopLat,
           if (extraStopLng != null) 'extra_stop_lng': extraStopLng,
+          if (recipientName != null) 'recipient_name': recipientName,
+          if (recipientPhone != null) 'recipient_phone': recipientPhone,
+          if (itemDescription != null && itemDescription.isNotEmpty)
+            'item_description': itemDescription,
+          if (isFragile) 'is_fragile': true,
+          if (declaredValue != null) 'declared_value': declaredValue,
+          if (helperCount > 0) 'helper_count': helperCount,
+          if (roundTrip) 'is_round_trip': true,
+          if (scheduledFor != null) 'scheduled_for': scheduledFor.toIso8601String(),
+          if (cargoType != null) 'cargo_type': cargoType,
         })
         .select(_selectWithMotoboy)
         .single();

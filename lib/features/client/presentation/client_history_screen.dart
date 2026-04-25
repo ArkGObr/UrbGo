@@ -110,7 +110,7 @@ class _ClientHistoryScreenState extends ConsumerState<ClientHistoryScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text('Histórico de Entregas', style: AppTypography.h3),
+        title: Text('Histórico', style: AppTypography.h3),
         backgroundColor: AppColors.surface,
         centerTitle: true,
         elevation: 0,
@@ -141,8 +141,8 @@ class _ClientHistoryScreenState extends ConsumerState<ClientHistoryScreen> {
     if (_deliveries.isEmpty) {
       return const EmptyState(
         icon: Icons.receipt_long_rounded,
-        title: 'Nenhuma entrega ainda',
-        subtitle: 'Seu histórico de entregas concluídas aparecerá aqui.',
+        title: 'Nenhum pedido ainda',
+        subtitle: 'Suas corridas e entregas concluídas aparecerão aqui.',
       );
     }
 
@@ -248,7 +248,11 @@ class _HistoryCard extends StatelessWidget {
                             spacing: AppSpacing.sm,
                             runSpacing: AppSpacing.xs,
                             children: [
-                              _StatusBadge(status: delivery.status),
+                              _StatusBadge(
+                                label: delivery.statusLabelForCategory,
+                                color: delivery.status.color,
+                                icon: delivery.status.icon,
+                              ),
                               VehicleBadge(category: delivery.vehicleCategory),
                             ],
                           ),
@@ -264,6 +268,7 @@ class _HistoryCard extends StatelessWidget {
                     _AddressRow(
                       icon: Icons.radio_button_on_rounded,
                       iconColor: AppColors.primary,
+                      label: delivery.pickupLabel,
                       address: delivery.pickupAddress,
                     ),
                     if (delivery.extraStopAddress != null) ...[
@@ -278,6 +283,7 @@ class _HistoryCard extends StatelessWidget {
                       _AddressRow(
                         icon: Icons.add_location_alt_rounded,
                         iconColor: const Color(0xFFFF9800),
+                        label: 'Parada extra',
                         address: delivery.extraStopAddress!,
                       ),
                     ],
@@ -292,6 +298,7 @@ class _HistoryCard extends StatelessWidget {
                     _AddressRow(
                       icon: Icons.location_on_rounded,
                       iconColor: AppColors.error,
+                      label: delivery.deliveryLabel,
                       address: delivery.deliveryAddress,
                     ),
                     const SizedBox(height: AppSpacing.md),
@@ -365,7 +372,9 @@ class _HistoryCard extends StatelessWidget {
                                 ),
                                 const SizedBox(width: AppSpacing.xs),
                                 Text(
-                                  'Avaliar entregador',
+                                  delivery.isMotoTaxi
+                                      ? 'Avaliar motorista'
+                                      : 'Avaliar entregador',
                                   style: AppTypography.labelSmall.copyWith(
                                     color: AppColors.primary,
                                     fontWeight: FontWeight.w600,
@@ -403,9 +412,15 @@ class _HistoryCard extends StatelessWidget {
 }
 
 class _StatusBadge extends StatelessWidget {
-  final DeliveryStatus status;
+  final String label;
+  final Color color;
+  final IconData icon;
 
-  const _StatusBadge({required this.status});
+  const _StatusBadge({
+    required this.label,
+    required this.color,
+    required this.icon,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -415,22 +430,22 @@ class _StatusBadge extends StatelessWidget {
         vertical: AppSpacing.xs,
       ),
       decoration: BoxDecoration(
-        color: status.color.withValues(alpha: 0.15),
+        color: color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(AppRadius.full),
         border: Border.all(
-          color: status.color.withValues(alpha: 0.3),
+          color: color.withValues(alpha: 0.3),
           width: 0.5,
         ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(status.icon, size: 12, color: status.color),
+          Icon(icon, size: 12, color: color),
           const SizedBox(width: AppSpacing.xs),
           Text(
-            status.label,
+            label,
             style: AppTypography.labelSmall.copyWith(
-              color: status.color,
+              color: color,
               fontSize: 10,
               fontWeight: FontWeight.w700,
             ),
@@ -444,11 +459,13 @@ class _StatusBadge extends StatelessWidget {
 class _AddressRow extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
+  final String label;
   final String address;
 
   const _AddressRow({
     required this.icon,
     required this.iconColor,
+    required this.label,
     required this.address,
   });
 
@@ -460,13 +477,24 @@ class _AddressRow extends StatelessWidget {
         Icon(icon, size: 16, color: iconColor),
         const SizedBox(width: AppSpacing.sm),
         Expanded(
-          child: Text(
-            address,
-            style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.textPrimary,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: AppTypography.labelSmall.copyWith(
+                  color: AppColors.textTertiary,
+                ),
+              ),
+              Text(
+                address,
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.textPrimary,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ),
         ),
       ],

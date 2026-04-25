@@ -98,7 +98,7 @@ class _RatingBottomSheetState extends ConsumerState<RatingBottomSheet> {
             ),
             const SizedBox(height: AppSpacing.xl2),
 
-            // Ícone de entrega concluída
+            // Ícone de serviço concluído
             Container(
               width: 64,
               height: 64,
@@ -115,10 +115,15 @@ class _RatingBottomSheetState extends ConsumerState<RatingBottomSheet> {
             ),
             const SizedBox(height: AppSpacing.lg),
 
-            Text('Entrega Concluída!', style: AppTypography.h2),
+            Text(
+              widget.delivery.isMotoTaxi
+                  ? 'Corrida Concluída!'
+                  : 'Entrega Concluída!',
+              style: AppTypography.h2,
+            ),
             const SizedBox(height: AppSpacing.xs),
             Text(
-              'Como foi a experiência com ${widget.delivery.motoboyName ?? 'o entregador'}?',
+              'Como foi a experiência com ${widget.delivery.motoboyName ?? 'o ${widget.delivery.driverLabel.toLowerCase()}'}?',
               style: AppTypography.bodyMedium,
               textAlign: TextAlign.center,
             ),

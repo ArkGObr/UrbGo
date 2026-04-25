@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_spacing.dart';
@@ -176,7 +178,10 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   Future<void> _cancelDelivery(
     String deliveryId, {
     bool withPenaltyWarning = false,
+    required bool isMotoTaxi,
   }) async {
+    final serviceLabel = isMotoTaxi ? 'corrida' : 'entrega';
+    final driverLabel = isMotoTaxi ? 'motorista' : 'entregador';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -184,7 +189,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.md),
         ),
-        title: Text('Cancelar entrega?', style: AppTypography.h3),
+        title: Text('Cancelar $serviceLabel?', style: AppTypography.h3),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -209,7 +214,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                     const SizedBox(width: AppSpacing.sm),
                     Expanded(
                       child: Text(
-                        'O entregador já foi aceito. Cancelamentos frequentes podem afetar sua conta.',
+                        'O $driverLabel já aceitou. Cancelamentos frequentes podem afetar sua conta.',
                         style: AppTypography.labelSmall.copyWith(
                           color: AppColors.error,
                         ),
@@ -239,7 +244,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(
-              'Cancelar entrega',
+              'Cancelar $serviceLabel',
               style: AppTypography.labelLarge.copyWith(color: AppColors.error),
             ),
           ),
@@ -273,35 +278,71 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
     }
   }
 
+  Future<void> _shareRide(DeliveryModel delivery) async {
+    final text =
+        'Estou em uma corrida pela UrbGO.\n'
+        'Origem: ${delivery.pickupAddress}\n'
+        'Destino: ${delivery.deliveryAddress}';
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    AppToast.show(
+      context,
+      title: 'Rota copiada',
+      subtitle: 'Envie a mensagem para seu contato de confiança.',
+      type: AppToastType.info,
+    );
+  }
+
+  Future<void> _launchEmergencyCall() async {
+    final uri = Uri.parse('tel:190');
+    try {
+      await launchUrl(uri);
+    } catch (_) {
+      if (!mounted) return;
+      AppToast.show(
+        context,
+        title: 'Não foi possível ligar',
+        subtitle: 'Disque 190 manualmente se precisar de ajuda imediata.',
+        type: AppToastType.error,
+      );
+    }
+  }
+
   void _onStatusChanged(DeliveryStatus prev, DeliveryStatus next) {
     if (!mounted) return;
+    final delivery = ref.read(deliveryStreamProvider(widget.deliveryId)).valueOrNull;
+    final isMotoTaxi = delivery?.isMotoTaxi ?? false;
     switch (next) {
       case DeliveryStatus.accepted:
         AppToast.show(
           context,
-          title: 'Entregador a caminho!',
-          subtitle: 'Seu pedido foi aceito',
+          title: isMotoTaxi ? 'Motorista a caminho!' : 'Entregador a caminho!',
+          subtitle: isMotoTaxi ? 'Sua corrida foi aceita' : 'Seu pedido foi aceito',
           type: AppToastType.info,
         );
       case DeliveryStatus.inProgress:
         AppToast.show(
           context,
-          title: 'Pacote coletado!',
-          subtitle: 'Seu pedido está sendo entregue',
+          title: isMotoTaxi ? 'Corrida iniciada!' : 'Pacote coletado!',
+          subtitle: isMotoTaxi
+              ? 'Voce esta a caminho do destino'
+              : 'Seu pedido esta sendo entregue',
           type: AppToastType.success,
         );
       case DeliveryStatus.completed:
         AppToast.show(
           context,
-          title: 'Entrega concluída!',
-          subtitle: 'Seu pedido chegou com sucesso',
+          title: isMotoTaxi ? 'Corrida concluida!' : 'Entrega concluida!',
+          subtitle: isMotoTaxi
+              ? 'Voce chegou ao destino'
+              : 'Seu pedido chegou com sucesso',
           type: AppToastType.success,
           duration: const Duration(seconds: 5),
         );
       case DeliveryStatus.cancelled:
         AppToast.show(
           context,
-          title: 'Entrega cancelada',
+          title: isMotoTaxi ? 'Corrida cancelada' : 'Entrega cancelada',
           subtitle: 'Entre em contato com o suporte se precisar de ajuda',
           type: AppToastType.error,
           duration: const Duration(seconds: 6),
@@ -384,6 +425,10 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
         ),
       ),
       data: (delivery) {
+        final isMotoTaxi = delivery.isMotoTaxi;
+        final driverLabel = delivery.driverLabel;
+        final driverLabelLower = driverLabel.toLowerCase();
+
         // Inicia tracking do motoboy se disponível
         if (delivery.motoboyId != null && _motoboyChannel == null) {
           _startMotoboyTracking(delivery.motoboyId!);
@@ -634,7 +679,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                 ),
                                 const SizedBox(width: AppSpacing.xs),
                                 Text(
-                                  delivery.status.label,
+                                  delivery.statusLabelForCategory,
                                   style: AppTypography.labelSmall.copyWith(
                                     color: delivery.status.color,
                                     fontSize: 11,
@@ -715,7 +760,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      delivery.motoboyName ?? 'Entregador',
+                                      delivery.motoboyName ?? driverLabel,
                                       style: AppTypography.h4,
                                     ),
                                     const SizedBox(height: 3),
@@ -867,7 +912,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                   Icons.chat_bubble_outline_rounded,
                                   size: 16,
                                 ),
-                                label: const Text('Falar com o entregador'),
+                                label: Text('Falar com o $driverLabelLower'),
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: AppColors.primary,
                                   side: const BorderSide(
@@ -885,13 +930,61 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                 ),
                                 onPressed: () {
                                   final name = Uri.encodeComponent(
-                                    delivery.motoboyName ?? 'Entregador',
+                                    delivery.motoboyName ?? driverLabel,
                                   );
                                   context.push(
                                     '/client/chat/${delivery.id}?name=$name',
                                   );
                                 },
                               ),
+                            ),
+                          ],
+                          if (isMotoTaxi &&
+                              delivery.status != DeliveryStatus.completed &&
+                              delivery.status != DeliveryStatus.cancelled) ...[
+                            const SizedBox(height: AppSpacing.sm),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => _shareRide(delivery),
+                                    icon: const Icon(
+                                      Icons.share_location_rounded,
+                                      size: 16,
+                                    ),
+                                    label: const Text('Compartilhar rota'),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: AppColors.primary,
+                                      side: const BorderSide(
+                                        color: AppColors.primary,
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: AppSpacing.sm,
+                                      ),
+                                      textStyle: AppTypography.labelLarge,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: AppSpacing.sm),
+                                Expanded(
+                                  child: FilledButton.icon(
+                                    onPressed: _launchEmergencyCall,
+                                    icon: const Icon(
+                                      Icons.emergency_rounded,
+                                      size: 16,
+                                    ),
+                                    label: const Text('SOS 190'),
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: AppColors.error,
+                                      foregroundColor: AppColors.textInverse,
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: AppSpacing.sm,
+                                      ),
+                                      textStyle: AppTypography.labelLarge,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                           const SizedBox(height: AppSpacing.lg),
@@ -926,7 +1019,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                         _TrackingAddressRow(
                           icon: Icons.radio_button_on_rounded,
                           iconColor: AppColors.primary,
-                          label: 'Coleta',
+                          label: delivery.pickupLabel,
                           address: delivery.pickupAddress,
                         ),
                         if (delivery.extraStopAddress != null) ...[
@@ -942,9 +1035,77 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                         _TrackingAddressRow(
                           icon: Icons.location_on_rounded,
                           iconColor: AppColors.error,
-                          label: 'Entrega',
+                          label: delivery.deliveryLabel,
                           address: delivery.deliveryAddress,
                         ),
+
+                        if (!isMotoTaxi &&
+                            (delivery.recipientName != null ||
+                                delivery.recipientPhone != null ||
+                                delivery.itemDescription != null ||
+                                delivery.isFragile ||
+                                delivery.hasHelpers ||
+                                delivery.isScheduled ||
+                                delivery.roundTrip ||
+                                delivery.cargoType != null)) ...[
+                          const SizedBox(height: AppSpacing.lg),
+                          const Divider(color: AppColors.surfaceBorder),
+                          const SizedBox(height: AppSpacing.md),
+                          Text(
+                            'Detalhes do pedido',
+                            style: AppTypography.labelLarge,
+                          ),
+                          const SizedBox(height: AppSpacing.md),
+                          if (delivery.recipientName != null)
+                            _TrackingDetailRow(
+                              icon: Icons.person_rounded,
+                              label: 'Destinatario',
+                              value: delivery.recipientName!,
+                            ),
+                          if (delivery.recipientPhone != null)
+                            _TrackingDetailRow(
+                              icon: Icons.phone_rounded,
+                              label: 'Telefone',
+                              value: delivery.recipientPhone!,
+                            ),
+                          if (delivery.itemDescription != null)
+                            _TrackingDetailRow(
+                              icon: Icons.notes_rounded,
+                              label: 'Observacoes',
+                              value: delivery.itemDescription!,
+                            ),
+                          if (delivery.cargoType != null)
+                            _TrackingDetailRow(
+                              icon: Icons.inventory_2_rounded,
+                              label: 'Tipo de carga',
+                              value: delivery.cargoTypeLabel,
+                            ),
+                          if (delivery.isFragile)
+                            const _TrackingDetailRow(
+                              icon: Icons.warning_amber_rounded,
+                              label: 'Atencao',
+                              value: 'Item fragil',
+                            ),
+                          if (delivery.hasHelpers)
+                            _TrackingDetailRow(
+                              icon: Icons.people_rounded,
+                              label: 'Ajudantes',
+                              value:
+                                  '${delivery.helperCount} ajudante${delivery.helperCount > 1 ? 's' : ''}',
+                            ),
+                          if (delivery.roundTrip)
+                            const _TrackingDetailRow(
+                              icon: Icons.repeat_rounded,
+                              label: 'Trajeto',
+                              value: 'Ida e volta',
+                            ),
+                          if (delivery.isScheduled)
+                            _TrackingDetailRow(
+                              icon: Icons.event_rounded,
+                              label: 'Agendamento',
+                              value: delivery.scheduledForLabel,
+                            ),
+                        ],
 
                         // Foto de confirmação de entrega
                         if (delivery.status == DeliveryStatus.completed &&
@@ -953,7 +1114,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                           const Divider(color: AppColors.surfaceBorder),
                           const SizedBox(height: AppSpacing.sm),
                           Text(
-                            'Confirmação de entrega',
+                            isMotoTaxi
+                                ? 'Registro do servico'
+                                : 'Confirmacao de entrega',
                             style: AppTypography.labelLarge,
                           ),
                           const SizedBox(height: AppSpacing.sm),
@@ -998,6 +1161,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                   ? null
                                   : () => _cancelDelivery(
                                       delivery.id,
+                                      isMotoTaxi: isMotoTaxi,
                                       withPenaltyWarning:
                                           delivery.isCancelWithPenaltyWarning,
                                     ),
@@ -1011,7 +1175,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                                       ),
                                     )
                                   : Text(
-                                      'Cancelar Entrega',
+                                      isMotoTaxi
+                                          ? 'Cancelar Corrida'
+                                          : 'Cancelar Entrega',
                                       style: AppTypography.button.copyWith(
                                         color: AppColors.error,
                                       ),
@@ -1089,6 +1255,53 @@ class _TrackingAddressRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _TrackingDetailRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _TrackingDetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: AppColors.textSecondary),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: AppTypography.labelSmall.copyWith(
+                    color: AppColors.textTertiary,
+                    fontSize: 10,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

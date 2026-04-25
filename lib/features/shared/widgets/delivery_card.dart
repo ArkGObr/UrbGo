@@ -26,6 +26,9 @@ class DeliveryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isMotoTaxi = delivery.isMotoTaxi;
+    final driverLabel = delivery.driverLabel.toLowerCase();
+
     return StaggeredListItem(
       index: index,
       child: TapScale(
@@ -70,7 +73,9 @@ class DeliveryCard extends StatelessWidget {
                                 runSpacing: AppSpacing.xs,
                                 children: [
                                   _StatusBadge(
-                                    status: delivery.status,
+                                    label: delivery.statusLabelForCategory,
+                                    color: delivery.status.color,
+                                    icon: delivery.status.icon,
                                     compact: compact,
                                   ),
                                   VehicleBadge(
@@ -92,6 +97,7 @@ class DeliveryCard extends StatelessWidget {
                         _AddressRow(
                           icon: Icons.radio_button_on_rounded,
                           iconColor: AppColors.primary,
+                          label: delivery.pickupLabel,
                           address: delivery.pickupAddress,
                           compact: compact,
                         ),
@@ -100,6 +106,7 @@ class DeliveryCard extends StatelessWidget {
                           _AddressRow(
                             icon: Icons.add_location_alt_rounded,
                             iconColor: const Color(0xFFFF9800),
+                            label: 'Parada extra',
                             address: delivery.extraStopAddress!,
                             compact: compact,
                           ),
@@ -109,6 +116,7 @@ class DeliveryCard extends StatelessWidget {
                         _AddressRow(
                           icon: Icons.location_on_rounded,
                           iconColor: AppColors.error,
+                          label: delivery.deliveryLabel,
                           address: delivery.deliveryAddress,
                           compact: compact,
                         ),
@@ -150,8 +158,10 @@ class DeliveryCard extends StatelessWidget {
                               ),
                               label: Text(
                                 delivery.motoboyId == null
-                                    ? 'Aguardando entregador'
-                                    : 'Abrir chat',
+                                    ? (isMotoTaxi
+                                          ? 'Aguardando motorista'
+                                          : 'Aguardando entregador')
+                                    : 'Falar com o $driverLabel',
                               ),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: delivery.motoboyId == null
@@ -196,10 +206,17 @@ class DeliveryCard extends StatelessWidget {
 
 // ── Status Badge ──────────────────────────────────────────────
 class _StatusBadge extends StatelessWidget {
-  final DeliveryStatus status;
+  final String label;
+  final Color color;
+  final IconData icon;
   final bool compact;
 
-  const _StatusBadge({required this.status, this.compact = false});
+  const _StatusBadge({
+    required this.label,
+    required this.color,
+    required this.icon,
+    this.compact = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -209,22 +226,22 @@ class _StatusBadge extends StatelessWidget {
         vertical: compact ? 3 : AppSpacing.xs,
       ),
       decoration: BoxDecoration(
-        color: status.color.withValues(alpha: 0.15),
+        color: color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(AppRadius.full),
         border: Border.all(
-          color: status.color.withValues(alpha: 0.3),
+          color: color.withValues(alpha: 0.3),
           width: 0.5,
         ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(status.icon, size: 12, color: status.color),
+          Icon(icon, size: 12, color: color),
           const SizedBox(width: AppSpacing.xs),
           Text(
-            status.label,
+            label,
             style: AppTypography.labelSmall.copyWith(
-              color: status.color,
+              color: color,
               fontSize: compact ? 9 : 10,
               fontWeight: FontWeight.w700,
             ),
@@ -239,12 +256,14 @@ class _StatusBadge extends StatelessWidget {
 class _AddressRow extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
+  final String label;
   final String address;
   final bool compact;
 
   const _AddressRow({
     required this.icon,
     required this.iconColor,
+    required this.label,
     required this.address,
     this.compact = false,
   });
@@ -257,13 +276,24 @@ class _AddressRow extends StatelessWidget {
         Icon(icon, size: compact ? 16 : 18, color: iconColor),
         const SizedBox(width: AppSpacing.sm),
         Expanded(
-          child: Text(
-            address,
-            style:
-                (compact ? AppTypography.bodySmall : AppTypography.bodyMedium)
-                    .copyWith(color: AppColors.textPrimary),
-            maxLines: compact ? 1 : 2,
-            overflow: TextOverflow.ellipsis,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: AppTypography.labelSmall.copyWith(
+                  color: AppColors.textTertiary,
+                ),
+              ),
+              Text(
+                address,
+                style:
+                    (compact ? AppTypography.bodySmall : AppTypography.bodyMedium)
+                        .copyWith(color: AppColors.textPrimary),
+                maxLines: compact ? 1 : 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ),
         ),
       ],

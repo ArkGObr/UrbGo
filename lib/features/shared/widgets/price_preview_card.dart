@@ -24,6 +24,7 @@ class PricePreviewCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final surge = surgeInfo;
     final hasSurge = surge != null && surge.multiplier != 1.0;
+    final totalLabel = category.isMotoTaxi ? 'Corrida' : 'Total';
 
     return Container(
       decoration: BoxDecoration(
@@ -103,7 +104,7 @@ class PricePreviewCard extends StatelessWidget {
           ),
           Row(
             children: [
-              Text('Total', style: AppTypography.h4),
+              Text(totalLabel, style: AppTypography.h4),
               const Spacer(),
               Text(
                 CurrencyFormatter.format(totalValue),

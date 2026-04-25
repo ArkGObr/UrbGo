@@ -17,7 +17,15 @@ class VehicleCategoryInfo {
   final String? assetPath;
   final String description;
   final String capacity;
+  final String detailedCapacity;
   final int etaMultiplier;
+
+  // Propriedades por categoria
+  final bool isMotoTaxi;
+  final bool helperSupported;
+  final bool isEco;
+  final double? maxDistanceKm;
+  final double maxWeightKg;
 
   const VehicleCategoryInfo({
     required this.category,
@@ -27,7 +35,13 @@ class VehicleCategoryInfo {
     this.assetPath,
     required this.description,
     required this.capacity,
+    required this.detailedCapacity,
     required this.etaMultiplier,
+    this.isMotoTaxi = false,
+    this.helperSupported = false,
+    this.isEco = false,
+    this.maxDistanceKm,
+    required this.maxWeightKg,
   });
 }
 
@@ -38,36 +52,47 @@ const List<VehicleCategoryInfo> vehicleCategories = [
     id: 'motoboy',
     name: 'Moto Entregas',
     icon: Icons.two_wheeler_rounded,
-    description: 'Entregas rápidas, documentos',
+    description: 'Pacotes, documentos, rápido',
     capacity: 'Até 20 kg',
+    detailedCapacity: 'Até 20 kg / itens pequenos',
     etaMultiplier: 100,
+    maxWeightKg: 20,
   ),
   VehicleCategoryInfo(
     category: VehicleCategory.car,
     id: 'car',
-    name: 'Carro',
+    name: 'Carro Entregas',
     icon: Icons.directions_car_rounded,
-    description: 'Viagens confortáveis',
-    capacity: 'Até 4 passageiros',
+    description: 'Caixas, itens maiores',
+    capacity: 'Até 50 kg',
+    detailedCapacity: 'Até 50 kg / porta-malas',
     etaMultiplier: 115,
+    maxWeightKg: 50,
   ),
   VehicleCategoryInfo(
     category: VehicleCategory.bike,
     id: 'bike',
     name: 'Bike Entregas',
     icon: Icons.pedal_bike_rounded,
-    description: 'Entregas curtas e ecológicas',
-    capacity: 'Até 5 kg',
+    description: 'Ecológico, curtas distâncias',
+    capacity: 'Até 5 kg / 3 km',
+    detailedCapacity: 'Até 5 kg / máx. 3 km',
     etaMultiplier: 150,
+    isEco: true,
+    maxDistanceKm: 3.0,
+    maxWeightKg: 5,
   ),
   VehicleCategoryInfo(
     category: VehicleCategory.mototaxi,
     id: 'mototaxi',
     name: 'Moto Táxi',
     icon: Icons.motorcycle_rounded,
-    description: 'Transporte de passageiros',
+    description: 'Corrida de passageiro',
     capacity: '1 passageiro',
+    detailedCapacity: '1 passageiro / sem bagagem',
     etaMultiplier: 100,
+    isMotoTaxi: true,
+    maxWeightKg: 0,
   ),
   VehicleCategoryInfo(
     category: VehicleCategory.van,
@@ -75,19 +100,25 @@ const List<VehicleCategoryInfo> vehicleCategories = [
     name: 'Utilitário',
     icon: Icons.airport_shuttle_rounded,
     assetPath: 'assets/utilitario.png',
-    description: 'Fiorinos e furgões',
+    description: 'Móveis, eletrodomésticos',
     capacity: 'Até 650 kg',
+    detailedCapacity: 'Até 650 kg / 2.500 L',
     etaMultiplier: 130,
+    helperSupported: true,
+    maxWeightKg: 650,
   ),
   VehicleCategoryInfo(
     category: VehicleCategory.truck,
     id: 'truck',
-    name: 'Caminhão',
+    name: 'Carreto',
     icon: Icons.local_shipping_rounded,
     assetPath: 'assets/caminhao.png',
-    description: 'Mudanças e móveis pesados',
-    capacity: 'Até 4.000 kg',
+    description: 'Mudanças, carga pesada',
+    capacity: 'Até 2.500 kg',
+    detailedCapacity: 'Até 2.500 kg / mudanças',
     etaMultiplier: 160,
+    helperSupported: true,
+    maxWeightKg: 2500,
   ),
 ];
 
@@ -115,10 +146,6 @@ class _PriceTier {
 }
 
 /// Tabela de preços — MOTO
-/// Baseada na tabela real do sistema (distância em km → valor fixo).
-/// Faixas CONTÍGUAS: fromKm inclusive, toKm exclusive (exceto o último que é inclusive).
-/// Usar >= fromKm && < toKm elimina gaps e evitar que distâncias como 1.05 km
-/// caiam no fallback de "+25km" gerando preços errados.
 const List<_PriceTier> _motoTiers = [
   _PriceTier(0,  1,   8),
   _PriceTier(1,  2,  10),
@@ -147,8 +174,7 @@ const List<_PriceTier> _motoTiers = [
   _PriceTier(24, 25, 50),
 ];
 
-/// Tabela de preços — CARRO
-/// ~50% acima da moto (custo operacional maior). Faixas contíguas.
+/// Tabela de preços — CARRO (~50% acima da moto)
 const List<_PriceTier> _carTiers = [
   _PriceTier(0,  1,  12),
   _PriceTier(1,  2,  15),
@@ -178,11 +204,8 @@ const List<_PriceTier> _carTiers = [
 ];
 
 class PriceCalculator {
-  /// Calcula o preço da entrega com base na distância, categoria e multiplicador dinâmico.
-  ///
-  /// Usa comparação [>= fromKm && < toKm] — faixas totalmente contíguas, sem gaps.
-  /// A última faixa (24-25 km) usa [<= 25] para incluir o limite exato.
-  /// Acima de 25 km: preço da última faixa + taxa por km extra.
+  /// Calcula o preço base (distância) + surge multiplier.
+  /// Bike, Van, Truck usam tabela moto como base.
   static double calculate(
     VehicleCategoryInfo category,
     double distanceKm, {
@@ -196,8 +219,6 @@ class PriceCalculator {
     double base;
 
     if (distanceKm <= lastTier.toKm) {
-      // Dentro das faixas tabeladas: busca a faixa correta
-      // >= fromKm && < toKm para todas, exceto a última que usa <=
       _PriceTier? matched;
       for (int i = 0; i < tiers.length; i++) {
         final tier = tiers[i];
@@ -210,29 +231,36 @@ class PriceCalculator {
           break;
         }
       }
-      // matched nunca será null aqui pois distanceKm <= lastTier.toKm
       base = matched?.price ?? tiers.first.price;
     } else {
-      // Acima de 25 km: último tier + R$2/km extra (moto) ou R$3/km extra (carro)
       final extraKm = distanceKm - lastTier.toKm;
       final extraRate = category.category == VehicleCategory.car ? 3.0 : 2.0;
       base = lastTier.price + (extraKm * extraRate);
     }
 
-    final total = base * surgeMultiplier;
-    // Arredonda para o R$0,50 mais próximo para evitar valores com centavos estranhos
+    // Van e Truck têm multiplicador de preço adicional
+    double categoryMultiplier = 1.0;
+    if (category.category == VehicleCategory.van) categoryMultiplier = 1.4;
+    if (category.category == VehicleCategory.truck) categoryMultiplier = 1.8;
+
+    final total = base * surgeMultiplier * categoryMultiplier;
     return (total * 2).roundToDouble() / 2;
   }
 
-  /// Retorna o preço mínimo (faixa 0-1 km) para exibição
+  /// Preço adicional por helper (por contratação, não por km)
+  static double helperFee(int helperCount) => helperCount * 15.0;
+
   static double minFare(VehicleCategoryInfo category, {double surgeMultiplier = 1.0}) {
     final tiers = category.category == VehicleCategory.car
         ? _carTiers
         : _motoTiers;
-    return tiers.first.price * surgeMultiplier;
+    double base = tiers.first.price;
+    double categoryMultiplier = 1.0;
+    if (category.category == VehicleCategory.van) categoryMultiplier = 1.4;
+    if (category.category == VehicleCategory.truck) categoryMultiplier = 1.8;
+    return base * surgeMultiplier * categoryMultiplier;
   }
 
   static double commission(double value) => value * 0.25;
-
   static double netValue(double value) => value * 0.75;
 }
