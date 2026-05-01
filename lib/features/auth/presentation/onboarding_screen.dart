@@ -21,23 +21,31 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   int _page = 0;
 
   static const _items = [
-    (
-      icon: Icons.flash_on_rounded,
-      title: 'Entrega urbana sem enrolacao',
+    _OnboardingItem(
+      icon: Icons.bolt_rounded,
+      title: 'Bem-vindo ao UrbGO',
       subtitle:
-          'Peça corridas em poucos toques ou fique online para receber entregas perto de voce.',
+          'Plataforma completa de mobilidade urbana. Entregas de qualquer tamanho e corridas com passageiros — onde você estiver.',
     ),
-    (
-      icon: Icons.route_rounded,
-      title: 'Rastreamento e conversa em tempo real',
+    _OnboardingItem(
+      icon: Icons.inventory_2_rounded,
+      title: 'Toda entrega,\nno tamanho certo',
       subtitle:
-          'Acompanhe o motoboy no mapa, receba previsao e fale direto pela entrega.',
+          'Pacotes pequenos ou mudanças completas. Escolha o veículo ideal e acompanhe cada etapa no mapa.',
+      chips: ['Moto', 'Bike', 'Utilitário', 'Caminhão'],
     ),
-    (
+    _OnboardingItem(
+      icon: Icons.directions_car_rounded,
+      title: 'Corridas com\npassageiros',
+      subtitle:
+          'Precisando de uma carona? Solicite um moto táxi ou carro passeio em segundos e chegue ao seu destino.',
+      chips: ['Moto Táxi', 'Carro Passeio'],
+    ),
+    _OnboardingItem(
       icon: Icons.account_balance_wallet_rounded,
-      title: 'Carteira, reputacao e controle',
+      title: 'Tecnologia a\nseu favor',
       subtitle:
-          'Veja ganhos, evolua seu nivel de reputacao e gerencie suas recargas no app.',
+          'Rastreie no mapa, fale pelo chat, pague com PIX ou dinheiro e acompanhe seus ganhos em tempo real.',
     ),
   ];
 
@@ -95,6 +103,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                             border: Border.all(
                               color: AppColors.primary.withValues(alpha: 0.28),
                             ),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: AppColors.primaryGlow,
+                                blurRadius: 40,
+                                spreadRadius: 4,
+                              ),
+                            ],
                           ),
                           child: Icon(
                             item.icon,
@@ -117,6 +132,40 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                             height: 1.45,
                           ),
                         ),
+                        if (item.chips.isNotEmpty) ...[
+                          const SizedBox(height: AppSpacing.xl),
+                          Wrap(
+                            alignment: WrapAlignment.center,
+                            spacing: AppSpacing.sm,
+                            runSpacing: AppSpacing.sm,
+                            children: item.chips
+                                .map(
+                                  (chip) => Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: AppSpacing.md,
+                                      vertical: AppSpacing.xs,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      border: Border.all(
+                                        color: AppColors.surfaceBorder,
+                                      ),
+                                      borderRadius: BorderRadius.circular(
+                                        AppRadius.full,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      chip,
+                                      style: AppTypography.labelSmall.copyWith(
+                                        color: AppColors.textSecondary,
+                                        fontSize: 11,
+                                        letterSpacing: 0.3,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                          ),
+                        ],
                       ],
                     );
                   },
@@ -160,4 +209,18 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       ),
     );
   }
+}
+
+class _OnboardingItem {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final List<String> chips;
+
+  const _OnboardingItem({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.chips = const [],
+  });
 }

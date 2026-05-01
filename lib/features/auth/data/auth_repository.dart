@@ -219,7 +219,6 @@ class AuthRepository {
           hasIdentityDocument: identityDocumentUrl != null,
           hasSelfieWithDocument: selfieWithDocumentUrl != null,
           hasAddressProof: addressProofUrl != null,
-          hasCnhPhoto: cnhPhotoUrl != null,
           hasVehicleDocument: vehicleDocumentUrl != null,
           hasAdditionalPermit: additionalPermitUrl != null,
         ).isEmpty

@@ -47,8 +47,8 @@ class _CategorySelectorWidgetState extends State<CategorySelectorWidget> {
             duration: const Duration(milliseconds: 200),
             width: (MediaQuery.of(context).size.width - 60) / 3,
             padding: const EdgeInsets.symmetric(
-              vertical: AppSpacing.md,
-              horizontal: 4,
+              vertical: AppSpacing.sm,
+              horizontal: 2,
             ),
             decoration: BoxDecoration(
               color: isSelected
@@ -73,23 +73,24 @@ class _CategorySelectorWidgetState extends State<CategorySelectorWidget> {
               children: [
                 Column(
                   mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.start,
                   children: [
                     SizedBox(
-                      height: 56,
+                      height: 48, // Reduced icon wrapper height
                       child: Center(
                         child: cat.assetPath != null
                             ? Transform.scale(
                                 scaleX: -1,
                                 child: Image.asset(
                                   cat.assetPath!,
-                                  width: cat.id == 'truck' ? 56 : 46,
-                                  height: cat.id == 'truck' ? 56 : 46,
+                                  width: cat.id == 'truck' ? 44 : 36,
+                                  height: cat.id == 'truck' ? 44 : 36,
                                   fit: BoxFit.contain,
                                 ),
                               )
                             : Icon(
                                 cat.icon,
-                                size: cat.id == 'truck' ? 48 : 38,
+                                size: cat.id == 'truck' ? 36 : 30,
                                 color: isSelected
                                     ? AppColors.primary
                                     : AppColors.textSecondary,
@@ -97,33 +98,45 @@ class _CategorySelectorWidgetState extends State<CategorySelectorWidget> {
                       ),
                     ),
                     const SizedBox(height: AppSpacing.xs),
-                    Text(
-                      cat.name,
-                      textAlign: TextAlign.center,
-                      style: AppTypography.labelSmall.copyWith(
-                        color: isSelected
-                            ? AppColors.primary
-                            : AppColors.textPrimary,
-                        fontWeight:
-                            isSelected ? FontWeight.w700 : FontWeight.w500,
-                        fontSize: 12,
+                    SizedBox(
+                      height: 30, // Forces consistent height for up to 2 lines
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        child: Text(
+                          cat.name,
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.labelSmall.copyWith(
+                            color: isSelected
+                                ? AppColors.primary
+                                : AppColors.textPrimary,
+                            fontWeight:
+                                isSelected ? FontWeight.w700 : FontWeight.w500,
+                            fontSize: 11,
+                            height: 1.1,
+                          ),
+                        ),
                       ),
                     ),
                     if (!widget.isForDriver) ...[
-                      const SizedBox(height: 2),
                       Text(
                         cat.capacity,
                         textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: AppTypography.bodySmall.copyWith(
-                          fontSize: 10,
+                          fontSize: 9,
                           color: AppColors.textTertiary,
                         ),
                       ),
-                    ],
-                    // Badges de atributos
-                    if (!widget.isForDriver) ...[
                       const SizedBox(height: 4),
-                      _CategoryBadges(cat: cat, isSelected: isSelected),
+                      SizedBox(
+                        height: 16, // Consistent space for badges (or empty)
+                        child: Center(
+                          child: _CategoryBadges(cat: cat, isSelected: isSelected),
+                        ),
+                      ),
                     ],
                   ],
                 ),
@@ -185,7 +198,7 @@ class _CategoryBadges extends StatelessWidget {
         color: Color(0xFF4CAF50),
       ));
     }
-    if (cat.isMotoTaxi) {
+    if (cat.isRide) {
       badges.add(const _Badge(
         label: 'Corrida',
         icon: Icons.person_rounded,

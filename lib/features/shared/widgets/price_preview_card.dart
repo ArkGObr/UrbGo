@@ -24,7 +24,7 @@ class PricePreviewCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final surge = surgeInfo;
     final hasSurge = surge != null && surge.multiplier != 1.0;
-    final totalLabel = category.isMotoTaxi ? 'Corrida' : 'Total';
+    final totalLabel = category.isRide ? 'Corrida' : 'Total';
 
     return Container(
       decoration: BoxDecoration(

@@ -311,7 +311,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
   void _onStatusChanged(DeliveryStatus prev, DeliveryStatus next) {
     if (!mounted) return;
     final delivery = ref.read(deliveryStreamProvider(widget.deliveryId)).valueOrNull;
-    final isMotoTaxi = delivery?.isMotoTaxi ?? false;
+    final isMotoTaxi = delivery?.isRide ?? false;
     switch (next) {
       case DeliveryStatus.accepted:
         AppToast.show(
@@ -425,7 +425,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
         ),
       ),
       data: (delivery) {
-        final isMotoTaxi = delivery.isMotoTaxi;
+        final isMotoTaxi = delivery.isRide;
         final driverLabel = delivery.driverLabel;
         final driverLabelLower = driverLabel.toLowerCase();
 

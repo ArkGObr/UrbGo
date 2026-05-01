@@ -205,7 +205,6 @@ class MotoboyModel {
     hasIdentityDocument: identityDocumentUrl?.isNotEmpty == true,
     hasSelfieWithDocument: selfieWithDocumentUrl?.isNotEmpty == true,
     hasAddressProof: addressProofUrl?.isNotEmpty == true,
-    hasCnhPhoto: cnhPhotoUrl?.isNotEmpty == true,
     hasVehicleDocument: vehicleDocumentUrl?.isNotEmpty == true,
     hasAdditionalPermit: additionalPermitUrl?.isNotEmpty == true,
   );

@@ -22,7 +22,7 @@ COMMENT ON COLUMN deliveries.recipient_phone   IS 'Telefone do destinatário (ob
 COMMENT ON COLUMN deliveries.item_description  IS 'Observações/instruções para o entregador';
 COMMENT ON COLUMN deliveries.is_fragile        IS 'Flag: item frágil / manuseie com cuidado';
 COMMENT ON COLUMN deliveries.declared_value    IS 'Valor declarado pelo cliente para fins de seguro';
-COMMENT ON COLUMN deliveries.helper_count      IS 'Número de ajudantes solicitados (0, 1, 2, 3) — Van e Carreto';
+COMMENT ON COLUMN deliveries.helper_count      IS 'Número de ajudantes solicitados (0, 1, 2, 3) — Van e Caminhão';
 COMMENT ON COLUMN deliveries.is_round_trip     IS 'Opção de ida e volta (motorista retorna ao ponto de coleta)';
 COMMENT ON COLUMN deliveries.scheduled_for     IS 'Data/hora agendada. NULL = coleta imediata';
 COMMENT ON COLUMN deliveries.cargo_type        IS 'Tipo de carga: furniture | appliances | construction | other';

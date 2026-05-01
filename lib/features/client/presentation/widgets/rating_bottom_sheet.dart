@@ -116,7 +116,7 @@ class _RatingBottomSheetState extends ConsumerState<RatingBottomSheet> {
             const SizedBox(height: AppSpacing.lg),
 
             Text(
-              widget.delivery.isMotoTaxi
+              widget.delivery.isRide
                   ? 'Corrida Concluída!'
                   : 'Entrega Concluída!',
               style: AppTypography.h2,

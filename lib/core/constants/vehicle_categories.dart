@@ -22,6 +22,7 @@ class VehicleCategoryInfo {
 
   // Propriedades por categoria
   final bool isMotoTaxi;
+  final bool isRide;
   final bool helperSupported;
   final bool isEco;
   final double? maxDistanceKm;
@@ -38,6 +39,7 @@ class VehicleCategoryInfo {
     required this.detailedCapacity,
     required this.etaMultiplier,
     this.isMotoTaxi = false,
+    this.isRide = false,
     this.helperSupported = false,
     this.isEco = false,
     this.maxDistanceKm,
@@ -61,13 +63,14 @@ const List<VehicleCategoryInfo> vehicleCategories = [
   VehicleCategoryInfo(
     category: VehicleCategory.car,
     id: 'car',
-    name: 'Carro Entregas',
+    name: 'Carro Passeio',
     icon: Icons.directions_car_rounded,
-    description: 'Caixas, itens maiores',
-    capacity: 'Até 50 kg',
-    detailedCapacity: 'Até 50 kg / porta-malas',
+    description: 'Corrida com passageiros',
+    capacity: 'Até 4 passageiros',
+    detailedCapacity: 'Até 4 passageiros',
     etaMultiplier: 115,
-    maxWeightKg: 50,
+    isRide: true,
+    maxWeightKg: 0,
   ),
   VehicleCategoryInfo(
     category: VehicleCategory.bike,
@@ -92,6 +95,7 @@ const List<VehicleCategoryInfo> vehicleCategories = [
     detailedCapacity: '1 passageiro / sem bagagem',
     etaMultiplier: 100,
     isMotoTaxi: true,
+    isRide: true,
     maxWeightKg: 0,
   ),
   VehicleCategoryInfo(
@@ -104,20 +108,18 @@ const List<VehicleCategoryInfo> vehicleCategories = [
     capacity: 'Até 650 kg',
     detailedCapacity: 'Até 650 kg / 2.500 L',
     etaMultiplier: 130,
-    helperSupported: true,
     maxWeightKg: 650,
   ),
   VehicleCategoryInfo(
     category: VehicleCategory.truck,
     id: 'truck',
-    name: 'Carreto',
+    name: 'Caminhão',
     icon: Icons.local_shipping_rounded,
     assetPath: 'assets/caminhao.png',
     description: 'Mudanças, carga pesada',
     capacity: 'Até 2.500 kg',
     detailedCapacity: 'Até 2.500 kg / mudanças',
     etaMultiplier: 160,
-    helperSupported: true,
     maxWeightKg: 2500,
   ),
 ];

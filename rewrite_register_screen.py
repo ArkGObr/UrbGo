@@ -1,273 +1,24 @@
-import 'dart:io';
+import re
 
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart';
-import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/app_spacing.dart';
-import '../../../core/constants/app_typography.dart';
-import '../../../core/constants/vehicle_categories.dart';
-import '../../../core/utils/validators.dart';
-import '../../motoboy/domain/driver_registration_rules.dart';
-import '../../shared/widgets/category_selector.dart';
-import '../../shared/widgets/primary_button.dart';
-import '../domain/auth_provider.dart';
+with open('lib/features/auth/presentation/register_screen.dart', 'r') as f:
+    content = f.read()
 
-class RegisterScreen extends ConsumerStatefulWidget {
-  const RegisterScreen({super.key});
+# We need to insert int _currentStep = 0;
+content = re.sub(
+    r'(String _selectedRole = \'client\';)',
+    r'int _currentStep = 0;\n  \1',
+    content
+)
 
-  @override
-  ConsumerState<RegisterScreen> createState() => _RegisterScreenState();
-}
+# And replace the build method.
+# We'll split the build method content into steps.
+build_start = content.find('  @override\n  Widget build(BuildContext context) {')
+build_end = content.find('// ── Widget: Card de seleção de role', build_start)
 
-class _RegisterScreenState extends ConsumerState<RegisterScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _nameCtrl = TextEditingController();
-  final _phoneCtrl = TextEditingController();
-  final _emailCtrl = TextEditingController();
-  final _passwordCtrl = TextEditingController();
-  final _confirmPasswordCtrl = TextEditingController();
-  final _plateCtrl = TextEditingController();
-  final _modelCtrl = TextEditingController();
-  final _yearCtrl = TextEditingController();
-  final _documentCtrl = TextEditingController();
-  final _motoboyCpfCtrl = TextEditingController();
-  final _cnhNumberCtrl = TextEditingController();
-  final _cnhCategoryCtrl = TextEditingController();
+build_content = content[build_start:build_end]
 
-  int _currentStep = 0;
-  String _selectedRole = 'client';
-  String _clientType = 'cpf'; // 'cpf' ou 'cnpj'
-  bool _obscurePassword = true;
-  bool _obscureConfirm = true;
-  VehicleCategoryInfo? _selectedCategory;
-  DateTime? _cnhExpirationDate;
-  File? _identityDocumentFile;
-  File? _selfieWithDocumentFile;
-  File? _addressProofFile;
-  File? _vehicleDocumentFile;
-  File? _additionalPermitFile;
-
-  @override
-  void dispose() {
-    _nameCtrl.dispose();
-    _phoneCtrl.dispose();
-    _emailCtrl.dispose();
-    _passwordCtrl.dispose();
-    _confirmPasswordCtrl.dispose();
-    _plateCtrl.dispose();
-    _modelCtrl.dispose();
-    _documentCtrl.dispose();
-    _yearCtrl.dispose();
-    _motoboyCpfCtrl.dispose();
-    _cnhNumberCtrl.dispose();
-    _cnhCategoryCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    if (_selectedRole == 'client' &&
-        _documentCtrl.text.replaceAll(RegExp(r'\D'), '').isEmpty) {
-      _showError('Informe o CPF ou CNPJ para continuar.');
-      return;
-    }
-
-    if (_selectedRole == 'motoboy') {
-      if (_selectedCategory == null) {
-        _showError('Selecione a categoria do entregador para continuar.');
-        return;
-      }
-
-      final missing = missingDriverRegistrationItems(
-        category: _selectedCategory!.category,
-        cpf: _motoboyCpfCtrl.text.replaceAll(RegExp(r'\D'), ''),
-        vehiclePlate: _plateCtrl.text.trim(),
-        vehicleModel: _modelCtrl.text.trim(),
-        vehicleYear: _yearCtrl.text.trim(),
-        cnhNumber: _cnhNumberCtrl.text.trim(),
-        cnhCategory: _cnhCategoryCtrl.text.trim(),
-        cnhExpirationDate: _cnhExpirationDate,
-        hasIdentityDocument: _identityDocumentFile != null,
-        hasSelfieWithDocument: _selfieWithDocumentFile != null,
-        hasAddressProof: _addressProofFile != null,
-        hasVehicleDocument: _vehicleDocumentFile != null,
-        hasAdditionalPermit: _additionalPermitFile != null,
-      );
-
-      if (missing.isNotEmpty) {
-        _showError('Cadastro incompleto. Envie: ${missing.join(', ')}.');
-        return;
-      }
-    }
-
-    await ref
-        .read(authNotifierProvider.notifier)
-        .signUp(
-          email: _emailCtrl.text.trim(),
-          password: _passwordCtrl.text,
-          name: _nameCtrl.text.trim(),
-          phone: _phoneCtrl.text.trim(),
-          role: _selectedRole,
-          clientType: _selectedRole == 'client' ? _clientType : null,
-          document: _selectedRole == 'client'
-              ? _documentCtrl.text.replaceAll(RegExp(r'\D'), '')
-              : null,
-          vehiclePlate: _selectedRole == 'motoboy'
-              ? _plateCtrl.text.trim()
-              : null,
-          vehicleCategory: _selectedRole == 'motoboy'
-              ? (_selectedCategory?.id ?? 'motoboy')
-              : null,
-          vehicleModel: _selectedRole == 'motoboy'
-              ? _modelCtrl.text.trim().isEmpty
-                    ? null
-                    : _modelCtrl.text.trim()
-              : null,
-          vehicleYear: _selectedRole == 'motoboy'
-              ? int.tryParse(_yearCtrl.text.trim())
-              : null,
-          motoboyCpf: _selectedRole == 'motoboy'
-              ? _motoboyCpfCtrl.text.replaceAll(RegExp(r'\D'), '')
-              : null,
-          cnhNumber: _selectedRole == 'motoboy'
-              ? _cnhNumberCtrl.text.trim()
-              : null,
-          cnhCategory: _selectedRole == 'motoboy'
-              ? _cnhCategoryCtrl.text.trim().toUpperCase()
-              : null,
-          cnhExpirationDate: _selectedRole == 'motoboy'
-              ? _cnhExpirationDate
-              : null,
-          identityDocumentFile: _selectedRole == 'motoboy'
-              ? _identityDocumentFile
-              : null,
-          selfieWithDocumentFile: _selectedRole == 'motoboy'
-              ? _selfieWithDocumentFile
-              : null,
-          addressProofFile: _selectedRole == 'motoboy'
-              ? _addressProofFile
-              : null,
-          cnhPhotoFile: null,
-          vehicleDocumentFile: _selectedRole == 'motoboy'
-              ? _vehicleDocumentFile
-              : null,
-          additionalPermitFile: _selectedRole == 'motoboy'
-              ? _additionalPermitFile
-              : null,
-        );
-
-    if (!mounted) return;
-
-    final authState = ref.read(authNotifierProvider);
-    if (authState.hasError) {
-      _showError(authState.error.toString());
-    }
-  }
-
-  Future<void> _pickDocument(void Function(File file) onSelected) async {
-    final source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.photo_camera_outlined),
-              title: const Text('Tirar foto'),
-              onTap: () => Navigator.pop(ctx, ImageSource.camera),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('Escolher da galeria'),
-              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (source == null) return;
-
-    final picked = await ImagePicker().pickImage(
-      source: source,
-      imageQuality: 75,
-    );
-    if (picked == null) return;
-
-    final file = File(picked.path);
-    setState(() {
-      onSelected(file);
-    });
-  }
-
-  Future<void> _pickCnhExpirationDate() async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _cnhExpirationDate ?? now.add(const Duration(days: 365)),
-      firstDate: now.subtract(const Duration(days: 3650)),
-      lastDate: now.add(const Duration(days: 3650)),
-    );
-    if (picked == null) return;
-    setState(() => _cnhExpirationDate = picked);
-  }
-
-  String _formatDate(DateTime date) {
-    final day = date.day.toString().padLeft(2, '0');
-    final month = date.month.toString().padLeft(2, '0');
-    return '$day/$month/${date.year}';
-  }
-
-  void _showError(String message) {
-    if (message.contains('check_email_flag')) {
-      context.go('/check-email');
-      return;
-    }
-
-    final isEmailUsed =
-        message.contains('already') || message.contains('registered');
-    final displayMessage = isEmailUsed
-        ? 'Este e-mail já está cadastrado'
-        : message;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.md),
-          side: const BorderSide(color: AppColors.error, width: 1.5),
-        ),
-        title: const Row(
-          children: [
-            Icon(Icons.error_outline, color: AppColors.error),
-            SizedBox(width: 8),
-            Text(
-              'Erro no Cadastro',
-              style: TextStyle(color: AppColors.textPrimary),
-            ),
-          ],
-        ),
-        content: Text(
-          displayMessage,
-          style: AppTypography.bodySmall.copyWith(color: AppColors.textPrimary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('OK', style: TextStyle(color: AppColors.primary)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
+# It's better to construct the new build method and replace it.
+new_build = """  @override
   Widget build(BuildContext context) {
     final isLoading = ref.watch(authNotifierProvider).isLoading;
     final totalSteps = _selectedRole == 'client' ? 3 : 4;
@@ -413,33 +164,30 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       children: [
         Text('Tipo de conta', style: AppTypography.labelLarge),
         const SizedBox(height: AppSpacing.md),
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: _RoleCard(
-                  icon: Icons.business_rounded,
-                  label: 'Sou Cliente',
-                  subtitle: 'Crio pedidos',
-                  value: 'client',
-                  selected: _selectedRole == 'client',
-                  onTap: () => setState(() => _selectedRole = 'client'),
-                ),
+        Row(
+          children: [
+            Expanded(
+              child: _RoleCard(
+                icon: Icons.business_rounded,
+                label: 'Sou Cliente',
+                subtitle: 'Contrata entregas',
+                value: 'client',
+                selected: _selectedRole == 'client',
+                onTap: () => setState(() => _selectedRole = 'client'),
               ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: _RoleCard(
-                  icon: Icons.two_wheeler_rounded,
-                  label: 'Sou Entregador',
-                  subtitle: 'Faço entregas',
-                  value: 'motoboy',
-                  selected: _selectedRole == 'motoboy',
-                  onTap: () => setState(() => _selectedRole = 'motoboy'),
-                ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: _RoleCard(
+                icon: Icons.two_wheeler_rounded,
+                label: 'Sou Entregador',
+                subtitle: 'Faço entregas',
+                value: 'motoboy',
+                selected: _selectedRole == 'motoboy',
+                onTap: () => setState(() => _selectedRole = 'motoboy'),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ],
     );
@@ -798,325 +546,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       ],
     );
   }
-}
+"""
 
-// ── Widget: Card de seleção de role ──────────────────────────
-class _RoleCard extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String subtitle;
-  final String value;
-  final bool selected;
-  final VoidCallback onTap;
+new_content = content[:build_start] + new_build + '\n' + content[build_end:]
 
-  const _RoleCard({
-    required this.icon,
-    required this.label,
-    required this.subtitle,
-    required this.value,
-    required this.selected,
-    required this.onTap,
-  });
+with open('lib/features/auth/presentation/register_screen.dart', 'w') as f:
+    f.write(new_content)
 
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.primaryDeep : AppColors.surface,
-          borderRadius: BorderRadius.circular(AppRadius.md),
-          border: Border.all(
-            color: selected ? AppColors.primary : AppColors.surfaceBorder,
-            width: selected ? 1.5 : 0.8,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              icon,
-              color: selected ? AppColors.primary : AppColors.textTertiary,
-              size: 26,
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              label,
-              style: AppTypography.h4.copyWith(
-                color: selected ? AppColors.primary : AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(subtitle, style: AppTypography.bodySmall),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DocumentsChecklistCard extends StatelessWidget {
-  final VehicleCategory category;
-  final bool hasIdentityDocument;
-  final bool hasSelfieWithDocument;
-  final bool hasAddressProof;
-  final bool hasVehicleDocument;
-  final bool hasAdditionalPermit;
-
-  const _DocumentsChecklistCard({
-    required this.category,
-    required this.hasIdentityDocument,
-    required this.hasSelfieWithDocument,
-    required this.hasAddressProof,
-    required this.hasVehicleDocument,
-    required this.hasAdditionalPermit,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final items = <({String label, bool done})>[
-      (label: 'Documento de identificação', done: hasIdentityDocument),
-      (label: 'Selfie com documento', done: hasSelfieWithDocument),
-      (label: 'Comprovante de residência', done: hasAddressProof),
-      if (driverCategoryNeedsVehicleDocument(category))
-        (label: 'Documento do veículo', done: hasVehicleDocument),
-      if (driverCategoryNeedsAdditionalPermit(category))
-        (
-          label: driverAdditionalPermitLabel(category),
-          done: hasAdditionalPermit,
-        ),
-    ];
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.surfaceBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Checklist documental', style: AppTypography.labelLarge),
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            'Somente cadastros completos seguem para análise.',
-            style: AppTypography.bodySmall,
-          ),
-          const SizedBox(height: AppSpacing.md),
-          ...items.map(
-            (item) => Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-              child: Row(
-                children: [
-                  Icon(
-                    item.done
-                        ? Icons.check_circle_rounded
-                        : Icons.radio_button_unchecked_rounded,
-                    size: 18,
-                    color: item.done
-                        ? AppColors.primary
-                        : AppColors.textTertiary,
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: Text(item.label, style: AppTypography.bodyMedium),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DocumentUploadTile extends StatelessWidget {
-  final String label;
-  final String subtitle;
-  final File? file;
-  final VoidCallback onTap;
-
-  const _DocumentUploadTile({
-    required this.label,
-    required this.subtitle,
-    required this.file,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final selectedName = file?.path.split('/').last;
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppRadius.md),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(AppRadius.md),
-          border: Border.all(
-            color: file == null ? AppColors.surfaceBorder : AppColors.primary,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: file == null
-                    ? AppColors.surfaceHigh
-                    : AppColors.primary.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(AppRadius.sm),
-              ),
-              child: Icon(
-                file == null ? Icons.upload_file_rounded : Icons.check_rounded,
-                color: file == null
-                    ? AppColors.textTertiary
-                    : AppColors.primary,
-              ),
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(label, style: AppTypography.labelLarge),
-                  const SizedBox(height: 2),
-                  Text(
-                    selectedName ?? subtitle,
-                    style: AppTypography.bodySmall.copyWith(
-                      color: selectedName == null
-                          ? AppColors.textSecondary
-                          : AppColors.primary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            const Icon(
-              Icons.chevron_right_rounded,
-              color: AppColors.textTertiary,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Conta dígitos antes de [upToOffset] no texto bruto ────────
-int _digitsBeforeOffset(String text, int upToOffset) {
-  int count = 0;
-  final end = upToOffset.clamp(0, text.length);
-  for (int i = 0; i < end; i++) {
-    final c = text.codeUnitAt(i);
-    if (c >= 48 && c <= 57) count++;
-  }
-  return count;
-}
-
-// ── Posição no texto formatado após [targetDigits] dígitos ────
-int _cursorAfterDigits(String text, int targetDigits) {
-  int count = 0;
-  for (int i = 0; i < text.length; i++) {
-    if (count == targetDigits) return i;
-    final c = text.codeUnitAt(i);
-    if (c >= 48 && c <= 57) count++;
-  }
-  return text.length;
-}
-
-// ── Formatador de telefone: (XX) XXXXX-XXXX ───────────────────
-class _PhoneMaskFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    final raw = newValue.text;
-    final digits = raw.replaceAll(RegExp(r'\D'), '');
-    final digitsBeforeCursor = _digitsBeforeOffset(raw, newValue.selection.end);
-
-    final buffer = StringBuffer();
-    for (int i = 0; i < digits.length && i < 11; i++) {
-      if (i == 0) buffer.write('(');
-      if (i == 2) buffer.write(') ');
-      if (i == 7) buffer.write('-');
-      buffer.write(digits[i]);
-    }
-
-    final text = buffer.toString();
-    return TextEditingValue(
-      text: text,
-      selection: TextSelection.collapsed(
-        offset: _cursorAfterDigits(text, digitsBeforeCursor),
-      ),
-    );
-  }
-}
-
-// ── Formatador de CPF: 000.000.000-00 ─────────────────────────
-class _CpfMaskFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    final raw = newValue.text;
-    final digits = raw.replaceAll(RegExp(r'\D'), '');
-    final digitsBeforeCursor = _digitsBeforeOffset(raw, newValue.selection.end);
-
-    final buffer = StringBuffer();
-    for (int i = 0; i < digits.length && i < 11; i++) {
-      if (i == 3 || i == 6) buffer.write('.');
-      if (i == 9) buffer.write('-');
-      buffer.write(digits[i]);
-    }
-
-    final text = buffer.toString();
-    return TextEditingValue(
-      text: text,
-      selection: TextSelection.collapsed(
-        offset: _cursorAfterDigits(text, digitsBeforeCursor),
-      ),
-    );
-  }
-}
-
-// ── Formatador de CNPJ: 00.000.000/0000-00 ────────────────────
-class _CnpjMaskFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    final raw = newValue.text;
-    final digits = raw.replaceAll(RegExp(r'\D'), '');
-    final digitsBeforeCursor = _digitsBeforeOffset(raw, newValue.selection.end);
-
-    final buffer = StringBuffer();
-    for (int i = 0; i < digits.length && i < 14; i++) {
-      if (i == 2 || i == 5) buffer.write('.');
-      if (i == 8) buffer.write('/');
-      if (i == 12) buffer.write('-');
-      buffer.write(digits[i]);
-    }
-
-    final text = buffer.toString();
-    return TextEditingValue(
-      text: text,
-      selection: TextSelection.collapsed(
-        offset: _cursorAfterDigits(text, digitsBeforeCursor),
-      ),
-    );
-  }
-}
+print("Done!")

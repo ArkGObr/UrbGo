@@ -80,7 +80,6 @@ List<String> missingDriverRegistrationItems({
   required bool hasIdentityDocument,
   required bool hasSelfieWithDocument,
   required bool hasAddressProof,
-  required bool hasCnhPhoto,
   required bool hasVehicleDocument,
   required bool hasAdditionalPermit,
 }) {
@@ -96,10 +95,6 @@ List<String> missingDriverRegistrationItems({
 
   if (!hasAddressProof) {
     missing.add('comprovante de residência');
-  }
-
-  if (driverCategoryNeedsCnh(category) && !hasCnhPhoto) {
-    missing.add('foto da CNH');
   }
 
   if (driverCategoryNeedsVehicleDocument(category) && !hasVehicleDocument) {

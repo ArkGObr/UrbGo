@@ -372,7 +372,7 @@ class _HistoryCard extends StatelessWidget {
                                 ),
                                 const SizedBox(width: AppSpacing.xs),
                                 Text(
-                                  delivery.isMotoTaxi
+                                  delivery.isRide
                                       ? 'Avaliar motorista'
                                       : 'Avaliar entregador',
                                   style: AppTypography.labelSmall.copyWith(

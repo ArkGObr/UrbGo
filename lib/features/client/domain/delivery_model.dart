@@ -312,20 +312,23 @@ class DeliveryModel {
   );
 
   bool get isMotoTaxi => vehicleCategory == VehicleCategory.mototaxi;
+  bool get isRide =>
+      vehicleCategory == VehicleCategory.mototaxi ||
+      vehicleCategory == VehicleCategory.car;
 
   /// Labels contextuais por categoria (corrida vs entrega)
   String get statusLabelForCategory => switch (status) {
-    DeliveryStatus.pending => isMotoTaxi ? 'Aguardando motorista' : 'Aguardando entregador',
-    DeliveryStatus.accepted => isMotoTaxi ? 'Motorista a caminho' : 'Entregador a caminho',
-    DeliveryStatus.inProgress => isMotoTaxi ? 'Corrida em andamento' : 'Em rota de entrega',
-    DeliveryStatus.completed => isMotoTaxi ? 'Corrida concluída' : 'Entregue',
+    DeliveryStatus.pending => isRide ? 'Aguardando motorista' : 'Aguardando entregador',
+    DeliveryStatus.accepted => isRide ? 'Motorista a caminho' : 'Entregador a caminho',
+    DeliveryStatus.inProgress => isRide ? 'Corrida em andamento' : 'Em rota de entrega',
+    DeliveryStatus.completed => isRide ? 'Corrida concluída' : 'Entregue',
     DeliveryStatus.cancelled => 'Cancelado',
   };
 
-  String get pickupLabel => isMotoTaxi ? 'Origem' : 'Coleta';
-  String get deliveryLabel => isMotoTaxi ? 'Destino' : 'Entrega';
-  String get driverLabel => isMotoTaxi ? 'Motorista' : 'Entregador';
-  String get serviceLabel => isMotoTaxi ? 'Corrida' : 'Entrega';
+  String get pickupLabel => isRide ? 'Origem' : 'Coleta';
+  String get deliveryLabel => isRide ? 'Destino' : 'Entrega';
+  String get driverLabel => isRide ? 'Motorista' : 'Entregador';
+  String get serviceLabel => isRide ? 'Corrida' : 'Entrega';
 
   String get cargoTypeLabel => switch (cargoType) {
     'furniture' => 'Móveis',

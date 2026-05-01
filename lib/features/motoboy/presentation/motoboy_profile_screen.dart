@@ -28,12 +28,10 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
   bool _isLoading = false;
   File? _selectedImage;
   String? _currentAvatarUrl;
-  File? _cnhImage;
   File? _crlvImage;
   File? _identityImage;
   File? _selfieImage;
   File? _addressImage;
-  String? _currentCnhUrl;
   String? _currentCrlvUrl;
   String? _currentIdentityUrl;
   String? _currentSelfieUrl;
@@ -49,7 +47,6 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
         _descriptionController.text = m.description ?? '';
         setState(() {
           _currentAvatarUrl = m.avatarUrl;
-          _currentCnhUrl = m.cnhPhotoUrl;
           _currentCrlvUrl = m.vehicleDocumentUrl;
           _currentIdentityUrl = m.identityDocumentUrl;
           _currentSelfieUrl = m.selfieWithDocumentUrl;
@@ -88,8 +85,7 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
 
     if (picked != null) {
       setState(() {
-        if (docType == 1) _cnhImage = File(picked.path);
-        else if (docType == 2) _crlvImage = File(picked.path);
+        if (docType == 2) _crlvImage = File(picked.path);
         else if (docType == 3) _identityImage = File(picked.path);
         else if (docType == 4) _selfieImage = File(picked.path);
         else if (docType == 5) _addressImage = File(picked.path);
@@ -125,14 +121,6 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
         avatarUrl = Supabase.instance.client.storage
             .from('avatars')
             .getPublicUrl(uploadPath);
-      }
-
-      String? cnhUrl = _currentCnhUrl;
-      if (_cnhImage != null) {
-        final ext = _cnhImage!.path.split('.').last;
-        final path = '${user.id}/cnh-${DateTime.now().millisecondsSinceEpoch}.$ext';
-        await Supabase.instance.client.storage.from('driver-documents').upload(path, _cnhImage!, fileOptions: const FileOptions(upsert: true));
-        cnhUrl = path;
       }
 
       String? crlvUrl = _currentCrlvUrl;
@@ -183,7 +171,6 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
         hasIdentityDocument: identityUrl != null && identityUrl.isNotEmpty,
         hasSelfieWithDocument: selfieUrl != null && selfieUrl.isNotEmpty,
         hasAddressProof: addressUrl != null && addressUrl.isNotEmpty,
-        hasCnhPhoto: cnhUrl != null && cnhUrl.isNotEmpty,
         hasVehicleDocument: crlvUrl != null && crlvUrl.isNotEmpty,
         hasAdditionalPermit: motoboy.additionalPermitUrl != null && motoboy.additionalPermitUrl!.isNotEmpty,
       );
@@ -195,7 +182,6 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
           .update({
             'avatar_url': avatarUrl,
             'description': description,
-            'cnh_photo_url': cnhUrl,
             'vehicle_document_url': crlvUrl,
             'identity_document_url': identityUrl,
             'selfie_with_document_url': selfieUrl,
@@ -477,15 +463,6 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
                         onTap: () => _pickDocumentImage(5),
                       ),
                       const SizedBox(height: AppSpacing.md),
-                      if (driverCategoryNeedsCnh(motoboy.vehicleCategory)) ...[
-                        _buildDocumentItem(
-                          title: 'CNH',
-                          file: _cnhImage,
-                          currentUrl: _currentCnhUrl,
-                          onTap: () => _pickDocumentImage(1),
-                        ),
-                        const SizedBox(height: AppSpacing.md),
-                      ],
                       if (driverCategoryNeedsVehicleDocument(motoboy.vehicleCategory)) ...[
                         _buildDocumentItem(
                           title: 'Documento do Veículo (CRLV)',

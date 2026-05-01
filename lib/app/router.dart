@@ -90,7 +90,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
 
       // ── 4. Sem sessão fora das telas de auth → login ────────
-      if (user == null && !onLoginRegister) return '/login';
+      if (user == null && !onLoginRegister && !onOnboarding) return '/login';
 
       // ── 5. Com sessão nas telas de auth → home correta ──────
       if (user != null && onLoginRegister) {

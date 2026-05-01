@@ -26,7 +26,7 @@ class DeliveryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isMotoTaxi = delivery.isMotoTaxi;
+    final isMotoTaxi = delivery.isRide;
     final driverLabel = delivery.driverLabel.toLowerCase();
 
     return StaggeredListItem(
