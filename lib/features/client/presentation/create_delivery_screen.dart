@@ -46,7 +46,6 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
   final _recipientNameCtrl = TextEditingController();
   final _recipientPhoneCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
-  final _declaredValueCtrl = TextEditingController();
 
   // ── Stepper ──────────────────────────────────────────────
   int _step = 0;
@@ -85,6 +84,8 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
   final RouteService _routeService = RouteService();
   List<LatLng> _routePoints = [];
   RouteResult? _routeResult;
+  List<RouteChoice> _routeChoices = [];
+  String? _selectedRouteChoiceId;
   LatLng? _userLocation;
   SurgeInfo? _surgeInfo;
 
@@ -160,7 +161,6 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
     _recipientNameCtrl.dispose();
     _recipientPhoneCtrl.dispose();
     _notesCtrl.dispose();
-    _declaredValueCtrl.dispose();
     super.dispose();
   }
 
@@ -452,6 +452,8 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
         _deliveryValue = null;
         _routePoints = [];
         _routeResult = null;
+        _routeChoices = [];
+        _selectedRouteChoiceId = null;
       });
       return;
     }
@@ -466,12 +468,40 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
     _fitMapBounds();
 
     try {
+      if (expectedExtraStop == null) {
+        final choices = await _routeService.getRouteChoices(from, to);
+        if (!mounted) return;
+
+        final sameExtraStop =
+            (_extraStopLatLng == null && expectedExtraStop == null) ||
+            _extraStopLatLng == expectedExtraStop;
+        if (_pickupLatLng == from && _deliveryLatLng == to && sameExtraStop) {
+          final selectedId = choices.any((c) => c.id == _selectedRouteChoiceId)
+              ? _selectedRouteChoiceId
+              : choices.first.id;
+          final selectedRoute = choices.firstWhere((c) => c.id == selectedId);
+          final multiplier = _surgeInfo?.multiplier ?? 1.0;
+          final realVal = PriceCalculator.calculate(
+            _selectedCategory!,
+            selectedRoute.route.distanceKm,
+            surgeMultiplier: multiplier,
+          );
+          setState(() {
+            _routeChoices = choices;
+            _selectedRouteChoiceId = selectedId;
+            _routePoints = selectedRoute.route.points;
+            _routeResult = selectedRoute.route;
+            _distanceKm = selectedRoute.route.distanceKm;
+            _deliveryValue = realVal;
+          });
+        }
+        return;
+      }
+
       final result = await _routeService.getRouteWithStops(stops);
       if (!mounted) return;
 
-      final sameExtraStop =
-          (_extraStopLatLng == null && expectedExtraStop == null) ||
-          _extraStopLatLng == expectedExtraStop;
+      final sameExtraStop = _extraStopLatLng == expectedExtraStop;
       if (_pickupLatLng == from && _deliveryLatLng == to && sameExtraStop) {
         final multiplier = _surgeInfo?.multiplier ?? 1.0;
         final realVal = PriceCalculator.calculate(
@@ -480,6 +510,8 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
           surgeMultiplier: multiplier,
         );
         setState(() {
+          _routeChoices = const [];
+          _selectedRouteChoiceId = null;
           _routePoints = result.points;
           _routeResult = result;
           _distanceKm = result.distanceKm;
@@ -626,10 +658,6 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
       final user = ref.read(authNotifierProvider).valueOrNull;
       if (user == null) return;
 
-      final declaredValue = _declaredValueCtrl.text.trim().isNotEmpty
-          ? double.tryParse(_declaredValueCtrl.text.trim().replaceAll(',', '.'))
-          : null;
-
       final totalValue =
           _deliveryValue! + PriceCalculator.helperFee(_helperCount);
 
@@ -668,7 +696,6 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
                 ? _notesCtrl.text.trim()
                 : null,
             isFragile: _isFragile,
-            declaredValue: declaredValue,
             helperCount: _helperCount,
             roundTrip: _roundTrip,
             scheduledFor: _scheduledFor,
@@ -885,6 +912,39 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
                     },
                   ),
                 ],
+                if (_routeChoices.length > 1) ...[
+                  const SizedBox(height: AppSpacing.lg),
+                  _RouteChoiceSection(
+                    choices: _routeChoices,
+                    selectedId: _selectedRouteChoiceId,
+                    onSelected: (choice) {
+                      final multiplier = _surgeInfo?.multiplier ?? 1.0;
+                      final price = PriceCalculator.calculate(
+                        _selectedCategory!,
+                        choice.route.distanceKm,
+                        surgeMultiplier: multiplier,
+                      );
+                      setState(() {
+                        _selectedRouteChoiceId = choice.id;
+                        _routePoints = choice.route.points;
+                        _routeResult = choice.route;
+                        _distanceKm = choice.route.distanceKm;
+                        _deliveryValue = price;
+                      });
+                    },
+                  ),
+                ],
+                if (_routeResult != null &&
+                    _routeResult!.advisories.isNotEmpty) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  _RouteAdvisoriesCard(advisories: _routeResult!.advisories),
+                ],
+                if (_routeResult != null &&
+                    _routeChoices.isNotEmpty &&
+                    _routeResult!.advisories.isEmpty) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  const _RouteAdvisoriesUnavailableCard(),
+                ],
                 const SizedBox(height: AppSpacing.xl2),
               ],
             ),
@@ -1018,10 +1078,6 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
               counterStyle: TextStyle(color: AppColors.textTertiary),
             ),
           ),
-          const SizedBox(height: AppSpacing.xl2),
-
-          // ── Valor declarado ─────────────────────────────
-          _DeclaredValueSection(controller: _declaredValueCtrl),
           const SizedBox(height: AppSpacing.xl2),
 
           // ── Agendamento (Van/Truck) ──────────────────────
@@ -2130,47 +2186,6 @@ class _ToggleOption extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────
 // Declared Value Section
-// ─────────────────────────────────────────────────────────────
-
-class _DeclaredValueSection extends StatelessWidget {
-  final TextEditingController controller;
-
-  const _DeclaredValueSection({required this.controller});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Valor declarado', style: AppTypography.labelLarge),
-        const SizedBox(height: AppSpacing.xs),
-        Text(
-          'Opcional. Informe o valor do item para fins de seguro pessoal.',
-          style: AppTypography.bodySmall,
-        ),
-        const SizedBox(height: AppSpacing.md),
-        TextFormField(
-          controller: controller,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-            LengthLimitingTextInputFormatter(10),
-          ],
-          style: AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
-          decoration: const InputDecoration(
-            hintText: 'Ex: 150,00',
-            prefixIcon: Icon(
-              Icons.attach_money_rounded,
-              size: 20,
-              color: AppColors.textTertiary,
-            ),
-            prefixText: 'R\$ ',
-          ),
-        ),
-      ],
-    );
-  }
-}
 
 // ─────────────────────────────────────────────────────────────
 // Scheduling Section
@@ -2308,6 +2323,178 @@ class _BikeDistanceWarning extends StatelessWidget {
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.textPrimary,
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RouteChoiceSection extends StatelessWidget {
+  final List<RouteChoice> choices;
+  final String? selectedId;
+  final ValueChanged<RouteChoice> onSelected;
+
+  const _RouteChoiceSection({
+    required this.choices,
+    required this.selectedId,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Rotas sugeridas', style: AppTypography.labelLarge),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          'Escolha a melhor opção para o entregador antes de confirmar.',
+          style: AppTypography.bodySmall,
+        ),
+        const SizedBox(height: AppSpacing.md),
+        for (final choice in choices) ...[
+          _RouteChoiceTile(
+            choice: choice,
+            selected: choice.id == selectedId,
+            onTap: () => onSelected(choice),
+          ),
+          if (choice != choices.last) const SizedBox(height: AppSpacing.sm),
+        ],
+      ],
+    );
+  }
+}
+
+class _RouteChoiceTile extends StatelessWidget {
+  final RouteChoice choice;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _RouteChoiceTile({
+    required this.choice,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected ? AppColors.primary : AppColors.surfaceBorder;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.md),
+      child: Container(
+        padding: AppSpacing.cardPadding,
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.primary.withValues(alpha: 0.08)
+              : AppColors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          border: Border.all(color: color, width: selected ? 1.4 : 1),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              selected
+                  ? Icons.radio_button_checked_rounded
+                  : Icons.radio_button_off_rounded,
+              color: selected ? AppColors.primary : AppColors.textTertiary,
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(choice.label, style: AppTypography.labelLarge),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${choice.route.formattedDistance} • ${choice.route.formattedDuration}',
+                    style: AppTypography.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RouteAdvisoriesCard extends StatelessWidget {
+  final List<RouteAdvisory> advisories;
+
+  const _RouteAdvisoriesCard({required this.advisories});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: AppSpacing.cardPadding,
+      decoration: BoxDecoration(
+        color: const Color(0xFFFF9800).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(
+          color: const Color(0xFFFF9800).withValues(alpha: 0.25),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Alertas da rota', style: AppTypography.labelLarge),
+          const SizedBox(height: AppSpacing.sm),
+          for (final advisory in advisories) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.warning_amber_rounded,
+                  size: 18,
+                  color: Color(0xFFFF9800),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    '${advisory.title}: ${advisory.description}',
+                    style: AppTypography.bodySmall,
+                  ),
+                ),
+              ],
+            ),
+            if (advisory != advisories.last)
+              const SizedBox(height: AppSpacing.sm),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _RouteAdvisoriesUnavailableCard extends StatelessWidget {
+  const _RouteAdvisoriesUnavailableCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: AppSpacing.cardPadding,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.surfaceBorder),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.info_outline_rounded,
+            color: AppColors.textSecondary,
+            size: 18,
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(
+              'A fonte de rota atual pode sugerir caminhos alternativos, mas não confirma obras ou pedágios em todos os trechos.',
+              style: AppTypography.bodySmall,
             ),
           ),
         ],

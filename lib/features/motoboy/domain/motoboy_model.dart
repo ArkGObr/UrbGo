@@ -15,12 +15,15 @@ class MotoboyModel {
   final String? cnhNumber;
   final String? cnhCategory;
   final DateTime? cnhExpirationDate;
+  final String? addressZipCode;
+  final String? addressNumber;
+  final String? addressComplement;
+  final String? addressLabel;
   final VehicleCategory vehicleCategory;
   final String? vehicleModel;
   final int? vehicleYear;
   final String? identityDocumentUrl;
   final String? selfieWithDocumentUrl;
-  final String? addressProofUrl;
   final String? cnhPhotoUrl;
   final String? vehicleDocumentUrl;
   final String? additionalPermitUrl;
@@ -46,12 +49,15 @@ class MotoboyModel {
     this.cnhNumber,
     this.cnhCategory,
     this.cnhExpirationDate,
+    this.addressZipCode,
+    this.addressNumber,
+    this.addressComplement,
+    this.addressLabel,
     this.vehicleCategory = VehicleCategory.motoboy,
     this.vehicleModel,
     this.vehicleYear,
     this.identityDocumentUrl,
     this.selfieWithDocumentUrl,
-    this.addressProofUrl,
     this.cnhPhotoUrl,
     this.vehicleDocumentUrl,
     this.additionalPermitUrl,
@@ -86,6 +92,10 @@ class MotoboyModel {
       cnhExpirationDate: json['cnh_expiration_date'] != null
           ? DateTime.tryParse(json['cnh_expiration_date'] as String)
           : null,
+      addressZipCode: json['address_zip_code'] as String?,
+      addressNumber: json['address_number'] as String?,
+      addressComplement: json['address_complement'] as String?,
+      addressLabel: json['address_label'] as String?,
       vehicleCategory: VehicleCategoryExtension.fromId(
         json['vehicle_category'] as String? ?? 'motoboy',
       ),
@@ -93,7 +103,6 @@ class MotoboyModel {
       vehicleYear: json['vehicle_year'] as int?,
       identityDocumentUrl: json['identity_document_url'] as String?,
       selfieWithDocumentUrl: json['selfie_with_document_url'] as String?,
-      addressProofUrl: json['address_proof_url'] as String?,
       cnhPhotoUrl: json['cnh_photo_url'] as String?,
       vehicleDocumentUrl: json['vehicle_document_url'] as String?,
       additionalPermitUrl: json['additional_permit_url'] as String?,
@@ -127,12 +136,15 @@ class MotoboyModel {
     String? cnhNumber,
     String? cnhCategory,
     DateTime? cnhExpirationDate,
+    String? addressZipCode,
+    String? addressNumber,
+    String? addressComplement,
+    String? addressLabel,
     VehicleCategory? vehicleCategory,
     String? vehicleModel,
     int? vehicleYear,
     String? identityDocumentUrl,
     String? selfieWithDocumentUrl,
-    String? addressProofUrl,
     String? cnhPhotoUrl,
     String? vehicleDocumentUrl,
     String? additionalPermitUrl,
@@ -158,13 +170,16 @@ class MotoboyModel {
       cnhNumber: cnhNumber ?? this.cnhNumber,
       cnhCategory: cnhCategory ?? this.cnhCategory,
       cnhExpirationDate: cnhExpirationDate ?? this.cnhExpirationDate,
+      addressZipCode: addressZipCode ?? this.addressZipCode,
+      addressNumber: addressNumber ?? this.addressNumber,
+      addressComplement: addressComplement ?? this.addressComplement,
+      addressLabel: addressLabel ?? this.addressLabel,
       vehicleCategory: vehicleCategory ?? this.vehicleCategory,
       vehicleModel: vehicleModel ?? this.vehicleModel,
       vehicleYear: vehicleYear ?? this.vehicleYear,
       identityDocumentUrl: identityDocumentUrl ?? this.identityDocumentUrl,
       selfieWithDocumentUrl:
           selfieWithDocumentUrl ?? this.selfieWithDocumentUrl,
-      addressProofUrl: addressProofUrl ?? this.addressProofUrl,
       cnhPhotoUrl: cnhPhotoUrl ?? this.cnhPhotoUrl,
       vehicleDocumentUrl: vehicleDocumentUrl ?? this.vehicleDocumentUrl,
       additionalPermitUrl: additionalPermitUrl ?? this.additionalPermitUrl,
@@ -202,9 +217,11 @@ class MotoboyModel {
     cnhNumber: cnhNumber ?? '',
     cnhCategory: cnhCategory ?? '',
     cnhExpirationDate: cnhExpirationDate,
+    addressZipCode: addressZipCode ?? '',
+    addressNumber: addressNumber ?? '',
+    addressLabel: addressLabel ?? '',
     hasIdentityDocument: identityDocumentUrl?.isNotEmpty == true,
     hasSelfieWithDocument: selfieWithDocumentUrl?.isNotEmpty == true,
-    hasAddressProof: addressProofUrl?.isNotEmpty == true,
     hasVehicleDocument: vehicleDocumentUrl?.isNotEmpty == true,
     hasAdditionalPermit: additionalPermitUrl?.isNotEmpty == true,
   );

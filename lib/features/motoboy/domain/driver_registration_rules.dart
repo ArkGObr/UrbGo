@@ -77,28 +77,34 @@ List<String> missingDriverRegistrationItems({
   required String cnhNumber,
   required String cnhCategory,
   required DateTime? cnhExpirationDate,
+  required String addressZipCode,
+  required String addressNumber,
+  required String addressLabel,
   required bool hasIdentityDocument,
   required bool hasSelfieWithDocument,
-  required bool hasAddressProof,
   required bool hasVehicleDocument,
   required bool hasAdditionalPermit,
 }) {
   final missing = <String>[];
+
+  if (addressZipCode.trim().length < 8 || addressLabel.trim().isEmpty) {
+    missing.add('CEP do endereço');
+  }
+
+  if (addressNumber.trim().isEmpty) {
+    missing.add('número do endereço');
+  }
 
   if (!hasIdentityDocument) {
     missing.add('documento de identificação');
   }
 
   if (!hasSelfieWithDocument) {
-    missing.add('selfie segurando o documento');
-  }
-
-  if (!hasAddressProof) {
-    missing.add('comprovante de residência');
+    missing.add('selfie para reconhecimento facial');
   }
 
   if (driverCategoryNeedsVehicleDocument(category) && !hasVehicleDocument) {
-    missing.add('documento do veículo');
+    missing.add('documento do veículo em PDF');
   }
 
   if (driverCategoryNeedsAdditionalPermit(category) && !hasAdditionalPermit) {

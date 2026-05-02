@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -9,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/document_picker_service.dart';
 import '../../shared/widgets/primary_button.dart';
 import '../domain/driver_registration_rules.dart';
 import '../domain/motoboy_providers.dart';
@@ -24,18 +26,20 @@ class MotoboyProfileScreen extends ConsumerStatefulWidget {
 class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final _descriptionController = TextEditingController();
+  final _addressZipCodeController = TextEditingController();
+  final _addressNumberController = TextEditingController();
+  final _addressComplementController = TextEditingController();
+  final _addressLabelController = TextEditingController();
 
   bool _isLoading = false;
   File? _selectedImage;
   String? _currentAvatarUrl;
-  File? _crlvImage;
+  File? _crlvFile;
   File? _identityImage;
   File? _selfieImage;
-  File? _addressImage;
   String? _currentCrlvUrl;
   String? _currentIdentityUrl;
   String? _currentSelfieUrl;
-  String? _currentAddressUrl;
 
   @override
   void initState() {
@@ -50,8 +54,11 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
           _currentCrlvUrl = m.vehicleDocumentUrl;
           _currentIdentityUrl = m.identityDocumentUrl;
           _currentSelfieUrl = m.selfieWithDocumentUrl;
-          _currentAddressUrl = m.addressProofUrl;
         });
+        _addressZipCodeController.text = m.addressZipCode ?? '';
+        _addressNumberController.text = m.addressNumber ?? '';
+        _addressComplementController.text = m.addressComplement ?? '';
+        _addressLabelController.text = m.addressLabel ?? '';
       }
     });
   }
@@ -59,6 +66,10 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
   @override
   void dispose() {
     _descriptionController.dispose();
+    _addressZipCodeController.dispose();
+    _addressNumberController.dispose();
+    _addressComplementController.dispose();
+    _addressLabelController.dispose();
     super.dispose();
   }
 
@@ -77,6 +88,12 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
   }
 
   Future<void> _pickDocumentImage(int docType) async {
+    if (docType == 2) {
+      final file = await DocumentPickerService().pickPdf();
+      if (file != null) setState(() => _crlvFile = file);
+      return;
+    }
+
     final picker = ImagePicker();
     final picked = await picker.pickImage(
       source: ImageSource.gallery,
@@ -85,10 +102,10 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
 
     if (picked != null) {
       setState(() {
-        if (docType == 2) _crlvImage = File(picked.path);
-        else if (docType == 3) _identityImage = File(picked.path);
-        else if (docType == 4) _selfieImage = File(picked.path);
-        else if (docType == 5) _addressImage = File(picked.path);
+        if (docType == 3)
+          _identityImage = File(picked.path);
+        else if (docType == 4)
+          _selfieImage = File(picked.path);
       });
     }
   }
@@ -124,35 +141,48 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
       }
 
       String? crlvUrl = _currentCrlvUrl;
-      if (_crlvImage != null) {
-        final ext = _crlvImage!.path.split('.').last;
-        final path = '${user.id}/crlv-${DateTime.now().millisecondsSinceEpoch}.$ext';
-        await Supabase.instance.client.storage.from('driver-documents').upload(path, _crlvImage!, fileOptions: const FileOptions(upsert: true));
+      if (_crlvFile != null) {
+        final ext = _crlvFile!.path.split('.').last;
+        final path =
+            '${user.id}/crlv-${DateTime.now().millisecondsSinceEpoch}.$ext';
+        await Supabase.instance.client.storage
+            .from('driver-documents')
+            .upload(
+              path,
+              _crlvFile!,
+              fileOptions: const FileOptions(upsert: true),
+            );
         crlvUrl = path;
       }
 
       String? identityUrl = _currentIdentityUrl;
       if (_identityImage != null) {
         final ext = _identityImage!.path.split('.').last;
-        final path = '${user.id}/identity-${DateTime.now().millisecondsSinceEpoch}.$ext';
-        await Supabase.instance.client.storage.from('driver-documents').upload(path, _identityImage!, fileOptions: const FileOptions(upsert: true));
+        final path =
+            '${user.id}/identity-${DateTime.now().millisecondsSinceEpoch}.$ext';
+        await Supabase.instance.client.storage
+            .from('driver-documents')
+            .upload(
+              path,
+              _identityImage!,
+              fileOptions: const FileOptions(upsert: true),
+            );
         identityUrl = path;
       }
 
       String? selfieUrl = _currentSelfieUrl;
       if (_selfieImage != null) {
         final ext = _selfieImage!.path.split('.').last;
-        final path = '${user.id}/selfie-${DateTime.now().millisecondsSinceEpoch}.$ext';
-        await Supabase.instance.client.storage.from('driver-documents').upload(path, _selfieImage!, fileOptions: const FileOptions(upsert: true));
+        final path =
+            '${user.id}/selfie-${DateTime.now().millisecondsSinceEpoch}.$ext';
+        await Supabase.instance.client.storage
+            .from('driver-documents')
+            .upload(
+              path,
+              _selfieImage!,
+              fileOptions: const FileOptions(upsert: true),
+            );
         selfieUrl = path;
-      }
-
-      String? addressUrl = _currentAddressUrl;
-      if (_addressImage != null) {
-        final ext = _addressImage!.path.split('.').last;
-        final path = '${user.id}/addr-${DateTime.now().millisecondsSinceEpoch}.$ext';
-        await Supabase.instance.client.storage.from('driver-documents').upload(path, _addressImage!, fileOptions: const FileOptions(upsert: true));
-        addressUrl = path;
       }
 
       final description = _descriptionController.text.trim();
@@ -168,14 +198,23 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
         cnhNumber: motoboy.cnhNumber ?? '',
         cnhCategory: motoboy.cnhCategory ?? '',
         cnhExpirationDate: motoboy.cnhExpirationDate,
+        addressZipCode: _addressZipCodeController.text.replaceAll(
+          RegExp(r'\D'),
+          '',
+        ),
+        addressNumber: _addressNumberController.text.trim(),
+        addressLabel: _addressLabelController.text.trim(),
         hasIdentityDocument: identityUrl != null && identityUrl.isNotEmpty,
         hasSelfieWithDocument: selfieUrl != null && selfieUrl.isNotEmpty,
-        hasAddressProof: addressUrl != null && addressUrl.isNotEmpty,
         hasVehicleDocument: crlvUrl != null && crlvUrl.isNotEmpty,
-        hasAdditionalPermit: motoboy.additionalPermitUrl != null && motoboy.additionalPermitUrl!.isNotEmpty,
+        hasAdditionalPermit:
+            motoboy.additionalPermitUrl != null &&
+            motoboy.additionalPermitUrl!.isNotEmpty,
       );
 
-      final newStatus = missing.isEmpty ? 'pending_review' : 'pending_documents';
+      final newStatus = missing.isEmpty
+          ? 'pending_review'
+          : 'pending_documents';
 
       await Supabase.instance.client
           .from('motoboys')
@@ -185,7 +224,16 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
             'vehicle_document_url': crlvUrl,
             'identity_document_url': identityUrl,
             'selfie_with_document_url': selfieUrl,
-            'address_proof_url': addressUrl,
+            'address_zip_code': _addressZipCodeController.text.replaceAll(
+              RegExp(r'\D'),
+              '',
+            ),
+            'address_number': _addressNumberController.text.trim(),
+            'address_complement':
+                _addressComplementController.text.trim().isEmpty
+                ? null
+                : _addressComplementController.text.trim(),
+            'address_label': _addressLabelController.text.trim(),
             'approval_status': newStatus,
           })
           .eq('id', user.id);
@@ -429,6 +477,78 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
                       const SizedBox(height: AppSpacing.xl3),
 
                       Text(
+                        'Endereço',
+                        style: AppTypography.h4.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      Text(
+                        'Mantenha o CEP, número e complemento atualizados.',
+                        style: AppTypography.bodySmall.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      TextFormField(
+                        controller: _addressZipCodeController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(8),
+                        ],
+                        decoration: const InputDecoration(
+                          labelText: 'CEP',
+                          prefixIcon: Icon(Icons.pin_drop_outlined),
+                        ),
+                        validator: (value) {
+                          final digits =
+                              value?.replaceAll(RegExp(r'\D'), '') ?? '';
+                          if (digits.length != 8) return 'CEP inválido.';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      TextFormField(
+                        controller: _addressLabelController,
+                        decoration: const InputDecoration(
+                          labelText: 'Endereço base',
+                          prefixIcon: Icon(Icons.map_outlined),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Informe o endereço base do CEP.';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      TextFormField(
+                        controller: _addressNumberController,
+                        decoration: const InputDecoration(
+                          labelText: 'Número',
+                          prefixIcon: Icon(Icons.numbers_rounded),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Informe o número.';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      TextFormField(
+                        controller: _addressComplementController,
+                        decoration: const InputDecoration(
+                          labelText: 'Complemento',
+                          hintText: 'Opcional',
+                          prefixIcon: Icon(Icons.add_home_work_outlined),
+                        ),
+                      ),
+
+                      const SizedBox(height: AppSpacing.xl3),
+
+                      Text(
                         'Documentos',
                         style: AppTypography.h4.copyWith(
                           color: AppColors.textPrimary,
@@ -450,23 +570,18 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
                       ),
                       const SizedBox(height: AppSpacing.md),
                       _buildDocumentItem(
-                        title: 'Selfie Segurando Documento',
+                        title: 'Selfie para Reconhecimento Facial',
                         file: _selfieImage,
                         currentUrl: _currentSelfieUrl,
                         onTap: () => _pickDocumentImage(4),
                       ),
                       const SizedBox(height: AppSpacing.md),
-                      _buildDocumentItem(
-                        title: 'Comprovante de Residência',
-                        file: _addressImage,
-                        currentUrl: _currentAddressUrl,
-                        onTap: () => _pickDocumentImage(5),
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                      if (driverCategoryNeedsVehicleDocument(motoboy.vehicleCategory)) ...[
+                      if (driverCategoryNeedsVehicleDocument(
+                        motoboy.vehicleCategory,
+                      )) ...[
                         _buildDocumentItem(
-                          title: 'Documento do Veículo (CRLV)',
-                          file: _crlvImage,
+                          title: 'Documento do Veículo (CRLV em PDF)',
+                          file: _crlvFile,
                           currentUrl: _currentCrlvUrl,
                           onTap: () => _pickDocumentImage(2),
                         ),
@@ -495,7 +610,8 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
     required String? currentUrl,
     required VoidCallback onTap,
   }) {
-    final hasDoc = file != null || (currentUrl != null && currentUrl.isNotEmpty);
+    final hasDoc =
+        file != null || (currentUrl != null && currentUrl.isNotEmpty);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(AppRadius.md),
@@ -512,11 +628,15 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: hasDoc ? AppColors.primary.withValues(alpha: 0.15) : AppColors.surfaceBorder,
+                color: hasDoc
+                    ? AppColors.primary.withValues(alpha: 0.15)
+                    : AppColors.surfaceBorder,
                 borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
               child: Icon(
-                hasDoc ? Icons.check_circle_rounded : Icons.insert_drive_file_outlined,
+                hasDoc
+                    ? Icons.check_circle_rounded
+                    : Icons.insert_drive_file_outlined,
                 color: hasDoc ? AppColors.primary : AppColors.textTertiary,
               ),
             ),
@@ -525,13 +645,12 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: AppTypography.labelLarge,
-                  ),
+                  Text(title, style: AppTypography.labelLarge),
                   const SizedBox(height: 2),
                   Text(
-                    hasDoc ? 'Enviado (Toque para trocar)' : 'Toque para enviar',
+                    hasDoc
+                        ? 'Enviado (Toque para trocar)'
+                        : 'Toque para enviar',
                     style: AppTypography.bodySmall.copyWith(
                       color: AppColors.textSecondary,
                     ),

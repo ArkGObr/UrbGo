@@ -5,15 +5,31 @@ import 'package:latlong2/latlong.dart';
 
 // ── Modelo de resultado de rota ────────────────────────────────
 
+enum RouteAdvisoryType { toll, incident }
+
+class RouteAdvisory {
+  final RouteAdvisoryType type;
+  final String title;
+  final String description;
+
+  const RouteAdvisory({
+    required this.type,
+    required this.title,
+    required this.description,
+  });
+}
+
 class RouteResult {
   final List<LatLng> points;
   final double distanceKm;
   final int durationSeconds;
+  final List<RouteAdvisory> advisories;
 
   const RouteResult({
     required this.points,
     required this.distanceKm,
     required this.durationSeconds,
+    this.advisories = const [],
   });
 
   String get formattedDuration {
@@ -29,6 +45,20 @@ class RouteResult {
     if (distanceKm < 1) return '${(distanceKm * 1000).round()} m';
     return '${distanceKm.toStringAsFixed(1)} km';
   }
+}
+
+class RouteChoice {
+  final String id;
+  final String label;
+  final RouteResult route;
+  final bool isPrimary;
+
+  const RouteChoice({
+    required this.id,
+    required this.label,
+    required this.route,
+    required this.isPrimary,
+  });
 }
 
 // ── Serviço de rota com API externa OSRM ────────────────────────
@@ -82,6 +112,7 @@ class RouteService {
             points: points,
             distanceKm: distanceMeters / 1000.0,
             durationSeconds: durationSecs,
+            advisories: _extractAdvisories(route),
           );
         }
       }
@@ -136,6 +167,51 @@ class RouteService {
     );
   }
 
+  Future<List<RouteChoice>> getRouteChoices(LatLng from, LatLng to) async {
+    try {
+      final url =
+          'https://router.project-osrm.org/route/v1/driving/'
+          '${from.longitude},${from.latitude};'
+          '${to.longitude},${to.latitude}'
+          '?alternatives=2&steps=true&geometries=geojson&overview=full';
+
+      final response = await _dio.get(
+        url,
+        options: Options(
+          receiveTimeout: const Duration(seconds: 5),
+          sendTimeout: const Duration(seconds: 5),
+        ),
+      );
+
+      if (response.statusCode == 200) {
+        final data = response.data;
+        final routes = data['routes'] as List<dynamic>?;
+        if (data['code'] == 'Ok' && routes != null && routes.isNotEmpty) {
+          return [
+            for (int i = 0; i < routes.length; i++)
+              RouteChoice(
+                id: 'route-$i',
+                label: i == 0 ? 'Melhor rota' : 'Rota alternativa $i',
+                isPrimary: i == 0,
+                route: _mapRoute(routes[i] as Map<String, dynamic>),
+              ),
+          ];
+        }
+      }
+    } catch (e) {
+      debugPrint('[RouteService] Erro ao buscar rotas alternativas: $e');
+    }
+
+    return [
+      RouteChoice(
+        id: 'route-0',
+        label: 'Melhor rota',
+        isPrimary: true,
+        route: await getRouteWithInfo(from, to),
+      ),
+    ];
+  }
+
   RouteResult _estimateRoute(LatLng from, LatLng to) {
     final straightKm = _haversineKm(from, to);
     // Mantém uma margem conservadora para percurso urbano real.
@@ -153,6 +229,56 @@ class RouteService {
       distanceKm: estimatedKm,
       durationSeconds: durationSecs,
     );
+  }
+
+  RouteResult _mapRoute(Map<String, dynamic> route) {
+    final distanceMeters = (route['distance'] as num).toDouble();
+    final durationSecs = (route['duration'] as num).toInt();
+    final geometry = route['geometry'] as Map<String, dynamic>;
+    final coordinates = geometry['coordinates'] as List<dynamic>;
+
+    final points = coordinates.map((coord) {
+      final lng = (coord[0] as num).toDouble();
+      final lat = (coord[1] as num).toDouble();
+      return LatLng(lat, lng);
+    }).toList();
+
+    return RouteResult(
+      points: points,
+      distanceKm: distanceMeters / 1000.0,
+      durationSeconds: durationSecs,
+      advisories: _extractAdvisories(route),
+    );
+  }
+
+  List<RouteAdvisory> _extractAdvisories(Map<String, dynamic> route) {
+    final advisories = <RouteAdvisory>[];
+    final seen = <String>{};
+    final legs = route['legs'] as List<dynamic>? ?? const [];
+
+    for (final leg in legs) {
+      final steps =
+          (leg as Map<String, dynamic>)['steps'] as List<dynamic>? ?? const [];
+      for (final step in steps) {
+        final name = ((step as Map<String, dynamic>)['name'] as String?)
+            ?.trim();
+        if (name == null || name.isEmpty) continue;
+        final normalized = name.toLowerCase();
+        if ((normalized.contains('pedagio') ||
+                normalized.contains('pedágio')) &&
+            seen.add('toll:$normalized')) {
+          advisories.add(
+            RouteAdvisory(
+              type: RouteAdvisoryType.toll,
+              title: 'Possível pedágio no caminho',
+              description: name,
+            ),
+          );
+        }
+      }
+    }
+
+    return advisories;
   }
 
   double _haversineKm(LatLng a, LatLng b) {

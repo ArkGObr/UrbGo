@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,7 +10,10 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/constants/vehicle_categories.dart';
+import '../../../core/services/document_picker_service.dart';
+import '../../../core/services/geocoding_service.dart';
 import '../../../core/utils/validators.dart';
+import '../../client/domain/client_providers.dart';
 import '../../motoboy/domain/driver_registration_rules.dart';
 import '../../shared/widgets/category_selector.dart';
 import '../../shared/widgets/primary_button.dart';
@@ -36,6 +40,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _motoboyCpfCtrl = TextEditingController();
   final _cnhNumberCtrl = TextEditingController();
   final _cnhCategoryCtrl = TextEditingController();
+  final _addressZipCtrl = TextEditingController();
+  final _addressNumberCtrl = TextEditingController();
+  final _addressComplementCtrl = TextEditingController();
+  final _addressLabelCtrl = TextEditingController();
+  final _addressZipFocus = FocusNode();
 
   int _currentStep = 0;
   String _selectedRole = 'client';
@@ -46,9 +55,25 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   DateTime? _cnhExpirationDate;
   File? _identityDocumentFile;
   File? _selfieWithDocumentFile;
-  File? _addressProofFile;
   File? _vehicleDocumentFile;
   File? _additionalPermitFile;
+  List<AddressSuggestion> _addressSuggestions = [];
+  bool _loadingAddressSuggestions = false;
+  Timer? _addressDebounce;
+  bool _settingAddressZip = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _addressZipCtrl.addListener(_onAddressZipChanged);
+    _addressZipFocus.addListener(() {
+      if (!_addressZipFocus.hasFocus) {
+        Future.delayed(const Duration(milliseconds: 150), () {
+          if (mounted) setState(() => _addressSuggestions = []);
+        });
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -64,6 +89,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _motoboyCpfCtrl.dispose();
     _cnhNumberCtrl.dispose();
     _cnhCategoryCtrl.dispose();
+    _addressZipCtrl.dispose();
+    _addressNumberCtrl.dispose();
+    _addressComplementCtrl.dispose();
+    _addressLabelCtrl.dispose();
+    _addressZipFocus.dispose();
+    _addressDebounce?.cancel();
     super.dispose();
   }
 
@@ -91,9 +122,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         cnhNumber: _cnhNumberCtrl.text.trim(),
         cnhCategory: _cnhCategoryCtrl.text.trim(),
         cnhExpirationDate: _cnhExpirationDate,
+        addressZipCode: _addressZipCtrl.text.replaceAll(RegExp(r'\D'), ''),
+        addressNumber: _addressNumberCtrl.text.trim(),
+        addressLabel: _addressLabelCtrl.text.trim(),
         hasIdentityDocument: _identityDocumentFile != null,
         hasSelfieWithDocument: _selfieWithDocumentFile != null,
-        hasAddressProof: _addressProofFile != null,
         hasVehicleDocument: _vehicleDocumentFile != null,
         hasAdditionalPermit: _additionalPermitFile != null,
       );
@@ -142,14 +175,25 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           cnhExpirationDate: _selectedRole == 'motoboy'
               ? _cnhExpirationDate
               : null,
+          addressZipCode: _selectedRole == 'motoboy'
+              ? _addressZipCtrl.text.replaceAll(RegExp(r'\D'), '')
+              : null,
+          addressNumber: _selectedRole == 'motoboy'
+              ? _addressNumberCtrl.text.trim()
+              : null,
+          addressComplement: _selectedRole == 'motoboy'
+              ? _addressComplementCtrl.text.trim().isEmpty
+                    ? null
+                    : _addressComplementCtrl.text.trim()
+              : null,
+          addressLabel: _selectedRole == 'motoboy'
+              ? _addressLabelCtrl.text.trim()
+              : null,
           identityDocumentFile: _selectedRole == 'motoboy'
               ? _identityDocumentFile
               : null,
           selfieWithDocumentFile: _selectedRole == 'motoboy'
               ? _selfieWithDocumentFile
-              : null,
-          addressProofFile: _selectedRole == 'motoboy'
-              ? _addressProofFile
               : null,
           cnhPhotoFile: null,
           vehicleDocumentFile: _selectedRole == 'motoboy'
@@ -202,6 +246,64 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final file = File(picked.path);
     setState(() {
       onSelected(file);
+    });
+  }
+
+  Future<void> _pickPdfDocument(void Function(File file) onSelected) async {
+    final file = await DocumentPickerService().pickPdf();
+    if (file == null) return;
+
+    setState(() {
+      onSelected(file);
+    });
+  }
+
+  void _onAddressZipChanged() {
+    if (_settingAddressZip) return;
+
+    _addressLabelCtrl.clear();
+
+    final zipDigits = _addressZipCtrl.text.replaceAll(RegExp(r'\D'), '');
+    if (zipDigits.length < 8) {
+      _addressDebounce?.cancel();
+      setState(() {
+        _addressSuggestions = [];
+        _loadingAddressSuggestions = false;
+      });
+      return;
+    }
+
+    _addressDebounce?.cancel();
+    setState(() => _loadingAddressSuggestions = true);
+    _addressDebounce = Timer(const Duration(milliseconds: 350), () async {
+      if (!mounted) return;
+      final suggestions = await ref
+          .read(geocodingServiceProvider)
+          .autocomplete(zipDigits);
+      if (!mounted) return;
+      if (_addressZipCtrl.text.replaceAll(RegExp(r'\D'), '') == zipDigits) {
+        setState(() {
+          _addressSuggestions = suggestions;
+          _loadingAddressSuggestions = false;
+        });
+      }
+    });
+  }
+
+  void _selectAddress(AddressSuggestion suggestion) {
+    _settingAddressZip = true;
+    final zipDigits = _addressZipCtrl.text.replaceAll(RegExp(r'\D'), '');
+    final formattedZip = _CepMaskFormatter.format(zipDigits);
+    _addressZipCtrl.value = TextEditingValue(
+      text: formattedZip,
+      selection: TextSelection.collapsed(offset: formattedZip.length),
+    );
+    _settingAddressZip = false;
+    _addressLabelCtrl.text = suggestion.label;
+    _addressZipFocus.unfocus();
+    setState(() {
+      _addressSuggestions = [];
+      _loadingAddressSuggestions = false;
     });
   }
 
@@ -315,7 +417,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 ],
               ),
             ),
-            
+
             // Progress Bar
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
@@ -359,7 +461,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       const SizedBox(height: AppSpacing.xl3),
 
                       PrimaryButton(
-                        label: _currentStep < totalSteps - 1 ? 'Próximo' : 'Criar conta',
+                        label: _currentStep < totalSteps - 1
+                            ? 'Próximo'
+                            : 'Criar conta',
                         onPressed: isLoading
                             ? null
                             : () {
@@ -458,7 +562,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           style: AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
           decoration: const InputDecoration(
             labelText: 'Nome completo',
-            prefixIcon: Icon(Icons.person_outlined, color: AppColors.textTertiary, size: 20),
+            prefixIcon: Icon(
+              Icons.person_outlined,
+              color: AppColors.textTertiary,
+              size: 20,
+            ),
           ),
           validator: (v) => Validators.required(v, field: 'Nome'),
         ),
@@ -472,7 +580,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           decoration: const InputDecoration(
             labelText: 'Telefone',
             hintText: '(00) 00000-0000',
-            prefixIcon: Icon(Icons.phone_outlined, color: AppColors.textTertiary, size: 20),
+            prefixIcon: Icon(
+              Icons.phone_outlined,
+              color: AppColors.textTertiary,
+              size: 20,
+            ),
           ),
           validator: Validators.phone,
         ),
@@ -484,7 +596,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           style: AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
           decoration: const InputDecoration(
             labelText: 'E-mail',
-            prefixIcon: Icon(Icons.email_outlined, color: AppColors.textTertiary, size: 20),
+            prefixIcon: Icon(
+              Icons.email_outlined,
+              color: AppColors.textTertiary,
+              size: 20,
+            ),
           ),
           validator: Validators.email,
         ),
@@ -496,14 +612,21 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           style: AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
           decoration: InputDecoration(
             labelText: 'Senha',
-            prefixIcon: const Icon(Icons.lock_outlined, color: AppColors.textTertiary, size: 20),
+            prefixIcon: const Icon(
+              Icons.lock_outlined,
+              color: AppColors.textTertiary,
+              size: 20,
+            ),
             suffixIcon: IconButton(
               icon: Icon(
-                _obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                _obscurePassword
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
                 color: AppColors.textTertiary,
                 size: 20,
               ),
-              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+              onPressed: () =>
+                  setState(() => _obscurePassword = !_obscurePassword),
             ),
           ),
           validator: Validators.password,
@@ -516,14 +639,21 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           style: AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
           decoration: InputDecoration(
             labelText: 'Confirmar senha',
-            prefixIcon: const Icon(Icons.lock_outlined, color: AppColors.textTertiary, size: 20),
+            prefixIcon: const Icon(
+              Icons.lock_outlined,
+              color: AppColors.textTertiary,
+              size: 20,
+            ),
             suffixIcon: IconButton(
               icon: Icon(
-                _obscureConfirm ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                _obscureConfirm
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
                 color: AppColors.textTertiary,
                 size: 20,
               ),
-              onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
+              onPressed: () =>
+                  setState(() => _obscureConfirm = !_obscureConfirm),
             ),
           ),
           validator: (v) {
@@ -545,18 +675,25 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           const SizedBox(height: AppSpacing.lg),
           DropdownButtonFormField<String>(
             initialValue: _clientType,
-            style: AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
+            style: AppTypography.bodyLarge.copyWith(
+              color: AppColors.textPrimary,
+            ),
             dropdownColor: AppColors.surface,
             decoration: InputDecoration(
               labelText: 'Tipo de Conta',
               prefixIcon: Icon(
-                _clientType == 'cpf' ? Icons.person_outlined : Icons.business_rounded,
+                _clientType == 'cpf'
+                    ? Icons.person_outlined
+                    : Icons.business_rounded,
                 color: AppColors.textTertiary,
                 size: 20,
               ),
             ),
             items: const [
-              DropdownMenuItem(value: 'cpf', child: Text('Pessoa Física (CPF)')),
+              DropdownMenuItem(
+                value: 'cpf',
+                child: Text('Pessoa Física (CPF)'),
+              ),
               DropdownMenuItem(value: 'cnpj', child: Text('Empresa (CNPJ)')),
             ],
             onChanged: (v) {
@@ -578,20 +715,28 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               LengthLimitingTextInputFormatter(_clientType == 'cpf' ? 11 : 14),
               _clientType == 'cpf' ? _CpfMaskFormatter() : _CnpjMaskFormatter(),
             ],
-            style: AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
+            style: AppTypography.bodyLarge.copyWith(
+              color: AppColors.textPrimary,
+            ),
             decoration: InputDecoration(
               labelText: _clientType == 'cpf' ? 'CPF' : 'CNPJ',
-              hintText: _clientType == 'cpf' ? '000.000.000-00' : '00.000.000/0000-00',
+              hintText: _clientType == 'cpf'
+                  ? '000.000.000-00'
+                  : '00.000.000/0000-00',
               prefixIcon: Icon(
-                _clientType == 'cpf' ? Icons.badge_outlined : Icons.business_center_outlined,
+                _clientType == 'cpf'
+                    ? Icons.badge_outlined
+                    : Icons.business_center_outlined,
                 color: AppColors.textTertiary,
                 size: 20,
               ),
             ),
             validator: (v) {
               final digits = v?.replaceAll(RegExp(r'\D'), '') ?? '';
-              if (_clientType == 'cpf' && digits.length != 11) return 'CPF deve ter 11 dígitos';
-              if (_clientType == 'cnpj' && digits.length != 14) return 'CNPJ deve ter 14 dígitos';
+              if (_clientType == 'cpf' && digits.length != 11)
+                return 'CPF deve ter 11 dígitos';
+              if (_clientType == 'cnpj' && digits.length != 14)
+                return 'CNPJ deve ter 14 dígitos';
               return null;
             },
           ),
@@ -625,25 +770,38 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               LengthLimitingTextInputFormatter(11),
               _CpfMaskFormatter(),
             ],
-            style: AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
+            style: AppTypography.bodyLarge.copyWith(
+              color: AppColors.textPrimary,
+            ),
             decoration: const InputDecoration(
               labelText: 'CPF do entregador',
               hintText: '000.000.000-00',
-              prefixIcon: Icon(Icons.badge_outlined, color: AppColors.textTertiary, size: 20),
+              prefixIcon: Icon(
+                Icons.badge_outlined,
+                color: AppColors.textTertiary,
+                size: 20,
+              ),
             ),
             validator: (v) => Validators.cpf(v),
           ),
           const SizedBox(height: AppSpacing.lg),
-          if (_selectedCategory != null && driverCategoryNeedsPlate(_selectedCategory!.category)) ...[
+          if (_selectedCategory != null &&
+              driverCategoryNeedsPlate(_selectedCategory!.category)) ...[
             TextFormField(
               controller: _plateCtrl,
               textCapitalization: TextCapitalization.characters,
               textInputAction: TextInputAction.next,
-              style: AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
+              style: AppTypography.bodyLarge.copyWith(
+                color: AppColors.textPrimary,
+              ),
               decoration: const InputDecoration(
                 labelText: 'Placa do veículo',
                 hintText: 'Ex: ABC-1234',
-                prefixIcon: Icon(Icons.two_wheeler_rounded, color: AppColors.textTertiary, size: 20),
+                prefixIcon: Icon(
+                  Icons.two_wheeler_rounded,
+                  color: AppColors.textTertiary,
+                  size: 20,
+                ),
               ),
               validator: (v) => Validators.required(v, field: 'Placa'),
             ),
@@ -652,13 +810,20 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               controller: _modelCtrl,
               textCapitalization: TextCapitalization.words,
               textInputAction: TextInputAction.next,
-              style: AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
+              style: AppTypography.bodyLarge.copyWith(
+                color: AppColors.textPrimary,
+              ),
               decoration: const InputDecoration(
                 labelText: 'Modelo do veículo',
                 hintText: 'Ex: Honda CG 160',
-                prefixIcon: Icon(Icons.directions_car_outlined, color: AppColors.textTertiary, size: 20),
+                prefixIcon: Icon(
+                  Icons.directions_car_outlined,
+                  color: AppColors.textTertiary,
+                  size: 20,
+                ),
               ),
-              validator: (v) => Validators.required(v, field: 'Modelo do veículo'),
+              validator: (v) =>
+                  Validators.required(v, field: 'Modelo do veículo'),
             ),
             const SizedBox(height: AppSpacing.lg),
             TextFormField(
@@ -669,22 +834,31 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 FilteringTextInputFormatter.digitsOnly,
                 LengthLimitingTextInputFormatter(4),
               ],
-              style: AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
+              style: AppTypography.bodyLarge.copyWith(
+                color: AppColors.textPrimary,
+              ),
               decoration: const InputDecoration(
                 labelText: 'Ano do veículo',
                 hintText: 'Ex: 2021',
-                prefixIcon: Icon(Icons.calendar_today_outlined, color: AppColors.textTertiary, size: 20),
+                prefixIcon: Icon(
+                  Icons.calendar_today_outlined,
+                  color: AppColors.textTertiary,
+                  size: 20,
+                ),
               ),
               validator: (v) {
-                if (v == null || v.isEmpty) return 'Ano do veículo é obrigatório';
+                if (v == null || v.isEmpty)
+                  return 'Ano do veículo é obrigatório';
                 final year = int.tryParse(v);
-                if (year == null || year < 1980 || year > 2035) return 'Ano inválido';
+                if (year == null || year < 1980 || year > 2035)
+                  return 'Ano inválido';
                 return null;
               },
             ),
             const SizedBox(height: AppSpacing.lg),
           ],
-          if (_selectedCategory != null && driverCategoryNeedsCnh(_selectedCategory!.category)) ...[
+          if (_selectedCategory != null &&
+              driverCategoryNeedsCnh(_selectedCategory!.category)) ...[
             TextFormField(
               controller: _cnhNumberCtrl,
               keyboardType: TextInputType.number,
@@ -693,10 +867,16 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 FilteringTextInputFormatter.digitsOnly,
                 LengthLimitingTextInputFormatter(11),
               ],
-              style: AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
+              style: AppTypography.bodyLarge.copyWith(
+                color: AppColors.textPrimary,
+              ),
               decoration: const InputDecoration(
                 labelText: 'Número de Registro da CNH',
-                prefixIcon: Icon(Icons.credit_card_outlined, color: AppColors.textTertiary, size: 20),
+                prefixIcon: Icon(
+                  Icons.credit_card_outlined,
+                  color: AppColors.textTertiary,
+                  size: 20,
+                ),
               ),
               validator: (v) => Validators.required(v, field: 'Número da CNH'),
             ),
@@ -709,13 +889,20 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z]')),
                 LengthLimitingTextInputFormatter(2),
               ],
-              style: AppTypography.bodyLarge.copyWith(color: AppColors.textPrimary),
+              style: AppTypography.bodyLarge.copyWith(
+                color: AppColors.textPrimary,
+              ),
               decoration: const InputDecoration(
                 labelText: 'Categoria da CNH',
                 hintText: 'Ex: A, B ou AB',
-                prefixIcon: Icon(Icons.assignment_ind_outlined, color: AppColors.textTertiary, size: 20),
+                prefixIcon: Icon(
+                  Icons.assignment_ind_outlined,
+                  color: AppColors.textTertiary,
+                  size: 20,
+                ),
               ),
-              validator: (v) => Validators.required(v, field: 'Categoria da CNH'),
+              validator: (v) =>
+                  Validators.required(v, field: 'Categoria da CNH'),
             ),
             const SizedBox(height: AppSpacing.lg),
             InkWell(
@@ -724,18 +911,138 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               child: InputDecorator(
                 decoration: const InputDecoration(
                   labelText: 'Validade da CNH',
-                  prefixIcon: Icon(Icons.event_outlined, color: AppColors.textTertiary, size: 20),
+                  prefixIcon: Icon(
+                    Icons.event_outlined,
+                    color: AppColors.textTertiary,
+                    size: 20,
+                  ),
                 ),
                 child: Text(
-                  _cnhExpirationDate == null ? 'Selecione a data' : _formatDate(_cnhExpirationDate!),
+                  _cnhExpirationDate == null
+                      ? 'Selecione a data'
+                      : _formatDate(_cnhExpirationDate!),
                   style: AppTypography.bodyLarge.copyWith(
-                    color: _cnhExpirationDate == null ? AppColors.textTertiary : AppColors.textPrimary,
+                    color: _cnhExpirationDate == null
+                        ? AppColors.textTertiary
+                        : AppColors.textPrimary,
                   ),
                 ),
               ),
             ),
             const SizedBox(height: AppSpacing.lg),
-          ]
+          ],
+          Text('Endereço', style: AppTypography.labelLarge),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'Busque o endereço pelo CEP e informe número e complemento.',
+            style: AppTypography.bodySmall,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          TextFormField(
+            controller: _addressZipCtrl,
+            focusNode: _addressZipFocus,
+            keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.next,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(8),
+              _CepMaskFormatter(),
+            ],
+            style: AppTypography.bodyLarge.copyWith(
+              color: AppColors.textPrimary,
+            ),
+            decoration: InputDecoration(
+              labelText: 'CEP',
+              hintText: '00000-000',
+              prefixIcon: Icon(
+                _loadingAddressSuggestions
+                    ? Icons.hourglass_top_rounded
+                    : Icons.location_searching_rounded,
+                color: AppColors.textTertiary,
+                size: 20,
+              ),
+            ),
+            validator: (v) {
+              final digits = v?.replaceAll(RegExp(r'\D'), '') ?? '';
+              if (digits.length != 8) return 'CEP inválido';
+              if (_addressLabelCtrl.text.trim().isEmpty) {
+                return 'Selecione um endereço válido para o CEP';
+              }
+              return null;
+            },
+          ),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: _addressSuggestions.isNotEmpty
+                ? Padding(
+                    padding: const EdgeInsets.only(top: AppSpacing.sm),
+                    child: _SuggestionsCard(
+                      key: ValueKey(_addressSuggestions.length),
+                      suggestions: _addressSuggestions,
+                      onTap: _selectAddress,
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+          if (_addressLabelCtrl.text.trim().isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.md),
+            InputDecorator(
+              decoration: const InputDecoration(
+                labelText: 'Endereço encontrado',
+                prefixIcon: Icon(
+                  Icons.map_outlined,
+                  color: AppColors.textTertiary,
+                  size: 20,
+                ),
+              ),
+              child: Text(
+                _addressLabelCtrl.text.trim(),
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: AppSpacing.lg),
+          TextFormField(
+            controller: _addressNumberCtrl,
+            keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.next,
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9A-Za-z/-]')),
+              LengthLimitingTextInputFormatter(10),
+            ],
+            style: AppTypography.bodyLarge.copyWith(
+              color: AppColors.textPrimary,
+            ),
+            decoration: const InputDecoration(
+              labelText: 'Número',
+              prefixIcon: Icon(
+                Icons.numbers_rounded,
+                color: AppColors.textTertiary,
+                size: 20,
+              ),
+            ),
+            validator: (v) => Validators.required(v, field: 'Número'),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          TextFormField(
+            controller: _addressComplementCtrl,
+            textCapitalization: TextCapitalization.words,
+            textInputAction: TextInputAction.done,
+            style: AppTypography.bodyLarge.copyWith(
+              color: AppColors.textPrimary,
+            ),
+            decoration: const InputDecoration(
+              labelText: 'Complemento',
+              hintText: 'Opcional',
+              prefixIcon: Icon(
+                Icons.add_home_work_outlined,
+                color: AppColors.textTertiary,
+                size: 20,
+              ),
+            ),
+          ),
         ],
       );
     }
@@ -752,7 +1059,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           category: _selectedCategory!.category,
           hasIdentityDocument: _identityDocumentFile != null,
           hasSelfieWithDocument: _selfieWithDocumentFile != null,
-          hasAddressProof: _addressProofFile != null,
           hasVehicleDocument: _vehicleDocumentFile != null,
           hasAdditionalPermit: _additionalPermitFile != null,
         ),
@@ -765,28 +1071,26 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         ),
         const SizedBox(height: AppSpacing.md),
         _DocumentUploadTile(
-          label: 'Selfie com documento',
-          subtitle: 'Foto do rosto segurando o documento visível',
+          label: 'Selfie para reconhecimento facial',
+          subtitle: 'Foto nítida do rosto para reconhecimento facial',
           file: _selfieWithDocumentFile,
           onTap: () => _pickDocument((file) => _selfieWithDocumentFile = file),
         ),
-        const SizedBox(height: AppSpacing.md),
-        _DocumentUploadTile(
-          label: 'Comprovante de residência',
-          subtitle: 'Conta recente em nome do entregador',
-          file: _addressProofFile,
-          onTap: () => _pickDocument((file) => _addressProofFile = file),
-        ),
-        if (driverCategoryNeedsVehicleDocument(_selectedCategory!.category)) ...[
+        if (driverCategoryNeedsVehicleDocument(
+          _selectedCategory!.category,
+        )) ...[
           const SizedBox(height: AppSpacing.md),
           _DocumentUploadTile(
             label: 'Documento do veículo',
-            subtitle: 'CRLV ou equivalente',
+            subtitle: 'Envie o CRLV em PDF',
             file: _vehicleDocumentFile,
-            onTap: () => _pickDocument((file) => _vehicleDocumentFile = file),
+            onTap: () =>
+                _pickPdfDocument((file) => _vehicleDocumentFile = file),
           ),
         ],
-        if (driverCategoryNeedsAdditionalPermit(_selectedCategory!.category)) ...[
+        if (driverCategoryNeedsAdditionalPermit(
+          _selectedCategory!.category,
+        )) ...[
           const SizedBox(height: AppSpacing.md),
           _DocumentUploadTile(
             label: driverAdditionalPermitLabel(_selectedCategory!.category),
@@ -861,7 +1165,6 @@ class _DocumentsChecklistCard extends StatelessWidget {
   final VehicleCategory category;
   final bool hasIdentityDocument;
   final bool hasSelfieWithDocument;
-  final bool hasAddressProof;
   final bool hasVehicleDocument;
   final bool hasAdditionalPermit;
 
@@ -869,7 +1172,6 @@ class _DocumentsChecklistCard extends StatelessWidget {
     required this.category,
     required this.hasIdentityDocument,
     required this.hasSelfieWithDocument,
-    required this.hasAddressProof,
     required this.hasVehicleDocument,
     required this.hasAdditionalPermit,
   });
@@ -878,10 +1180,9 @@ class _DocumentsChecklistCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = <({String label, bool done})>[
       (label: 'Documento de identificação', done: hasIdentityDocument),
-      (label: 'Selfie com documento', done: hasSelfieWithDocument),
-      (label: 'Comprovante de residência', done: hasAddressProof),
+      (label: 'Selfie para reconhecimento facial', done: hasSelfieWithDocument),
       if (driverCategoryNeedsVehicleDocument(category))
-        (label: 'Documento do veículo', done: hasVehicleDocument),
+        (label: 'Documento do veículo em PDF', done: hasVehicleDocument),
       if (driverCategoryNeedsAdditionalPermit(category))
         (
           label: driverAdditionalPermitLabel(category),
@@ -1013,6 +1314,60 @@ class _DocumentUploadTile extends StatelessWidget {
   }
 }
 
+class _SuggestionsCard extends StatelessWidget {
+  final List<AddressSuggestion> suggestions;
+  final void Function(AddressSuggestion) onTap;
+
+  const _SuggestionsCard({
+    super.key,
+    required this.suggestions,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surfaceHigh,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.surfaceBorder),
+      ),
+      child: ListView.separated(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: suggestions.length,
+        separatorBuilder: (_, __) =>
+            const Divider(height: 1, color: AppColors.surfaceBorder),
+        itemBuilder: (_, index) {
+          final suggestion = suggestions[index];
+          return InkWell(
+            onTap: () => onTap(suggestion),
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.location_on_outlined,
+                    color: AppColors.textTertiary,
+                    size: 18,
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Text(
+                      suggestion.label,
+                      style: AppTypography.bodyMedium,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
 // ── Conta dígitos antes de [upToOffset] no texto bruto ────────
 int _digitsBeforeOffset(String text, int upToOffset) {
   int count = 0;
@@ -1055,6 +1410,35 @@ class _PhoneMaskFormatter extends TextInputFormatter {
     }
 
     final text = buffer.toString();
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(
+        offset: _cursorAfterDigits(text, digitsBeforeCursor),
+      ),
+    );
+  }
+}
+
+class _CepMaskFormatter extends TextInputFormatter {
+  static String format(String digits) {
+    final cleaned = digits.replaceAll(RegExp(r'\D'), '');
+    final buffer = StringBuffer();
+    for (int i = 0; i < cleaned.length && i < 8; i++) {
+      if (i == 5) buffer.write('-');
+      buffer.write(cleaned[i]);
+    }
+    return buffer.toString();
+  }
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final raw = newValue.text;
+    final digits = raw.replaceAll(RegExp(r'\D'), '');
+    final digitsBeforeCursor = _digitsBeforeOffset(raw, newValue.selection.end);
+    final text = format(digits);
     return TextEditingValue(
       text: text,
       selection: TextSelection.collapsed(

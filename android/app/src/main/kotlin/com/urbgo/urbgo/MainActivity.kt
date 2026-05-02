@@ -1,22 +1,30 @@
 package com.urbgo.urbgo
 
+import android.app.Activity
+import android.content.Intent
 import android.location.Address
 import android.location.Geocoder
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.provider.OpenableColumns
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
 import java.util.Locale
 import kotlin.concurrent.thread
 
 class MainActivity : FlutterActivity() {
-    private val CHANNEL = "com.urbgo.app/geocoder"
+    private val geocoderChannel = "com.urbgo.app/geocoder"
+    private val documentPickerChannel = "com.urbgo.app/document_picker"
+    private val pickPdfRequestCode = 9001
+    private var pendingPdfResult: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, geocoderChannel).setMethodCallHandler { call, result ->
             if (call.method == "geocode") {
                 val query = call.argument<String>("query")
                 val focusLat = call.argument<Double>("focusLat")
@@ -101,5 +109,83 @@ class MainActivity : FlutterActivity() {
                 result.notImplemented()
             }
         }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, documentPickerChannel).setMethodCallHandler { call, result ->
+            if (call.method == "pickPdf") {
+                if (pendingPdfResult != null) {
+                    result.error("PICK_IN_PROGRESS", "Já existe uma seleção de PDF em andamento.", null)
+                    return@setMethodCallHandler
+                }
+
+                pendingPdfResult = result
+                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "application/pdf"
+                }
+
+                try {
+                    startActivityForResult(intent, pickPdfRequestCode)
+                } catch (e: Exception) {
+                    pendingPdfResult = null
+                    result.error("PICK_FAILED", e.message, null)
+                }
+            } else {
+                result.notImplemented()
+            }
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+
+        if (requestCode != pickPdfRequestCode) return
+
+        val result = pendingPdfResult
+        pendingPdfResult = null
+
+        if (resultCode != Activity.RESULT_OK) {
+            result?.success(null)
+            return
+        }
+
+        val uri = data?.data
+        if (uri == null) {
+            result?.error("PICK_FAILED", "Nenhum arquivo selecionado.", null)
+            return
+        }
+
+        try {
+            val filePath = copyUriToCache(uri)
+            result?.success(filePath)
+        } catch (e: Exception) {
+            result?.error("PICK_FAILED", e.message, null)
+        }
+    }
+
+    private fun copyUriToCache(uri: Uri): String {
+        val resolver = applicationContext.contentResolver
+        val fileName = queryDisplayName(uri) ?: "documento-${System.currentTimeMillis()}.pdf"
+        val safeName = if (fileName.endsWith(".pdf", ignoreCase = true)) fileName else "$fileName.pdf"
+        val outputFile = File(cacheDir, safeName)
+
+        resolver.openInputStream(uri)?.use { input ->
+            outputFile.outputStream().use { output ->
+                input.copyTo(output)
+            }
+        } ?: throw IllegalStateException("Não foi possível ler o PDF selecionado.")
+
+        return outputFile.absolutePath
+    }
+
+    private fun queryDisplayName(uri: Uri): String? {
+        val resolver = applicationContext.contentResolver
+        resolver.query(uri, null, null, null, null)?.use { cursor ->
+            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (nameIndex >= 0 && cursor.moveToFirst()) {
+                return cursor.getString(nameIndex)
+            }
+        }
+        return null
     }
 }
