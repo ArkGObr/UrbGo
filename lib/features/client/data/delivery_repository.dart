@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:latlong2/latlong.dart';
 import '../../../core/constants/vehicle_categories.dart';
+import '../../../data/models/route_result.dart';
 import '../domain/delivery_model.dart';
 
 class DeliveryRepository {
@@ -64,7 +66,8 @@ class DeliveryRepository {
           if (declaredValue != null) 'declared_value': declaredValue,
           if (helperCount > 0) 'helper_count': helperCount,
           if (roundTrip) 'is_round_trip': true,
-          if (scheduledFor != null) 'scheduled_for': scheduledFor.toIso8601String(),
+          if (scheduledFor != null)
+            'scheduled_for': scheduledFor.toIso8601String(),
           if (cargoType != null) 'cargo_type': cargoType,
         })
         .select(_selectWithMotoboy)
@@ -192,5 +195,23 @@ class DeliveryRepository {
           },
         )
         .subscribe();
+  }
+
+  Future<void> saveRouteSession({
+    required String deliveryId,
+    required LatLng origin,
+    required LatLng destination,
+    required RouteResult routeResult,
+  }) async {
+    await _db.from('route_sessions').insert({
+      'order_id': deliveryId,
+      'origin': 'POINT(${origin.longitude} ${origin.latitude})',
+      'destination': 'POINT(${destination.longitude} ${destination.latitude})',
+      'osrm_eta_seconds': routeResult.durationSeconds,
+      'gemini_eta_seconds': routeResult.durationInTrafficSeconds,
+      'toll_cost_brl': routeResult.tollCostBrl,
+      'traffic_ratio': routeResult.trafficRatio,
+      'routing_source': routeResult.sourceLabel,
+    });
   }
 }

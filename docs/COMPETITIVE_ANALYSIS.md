@@ -1,4 +1,4 @@
-# UrbGO — Análise Competitiva por Categoria
+# ArkGO — Análise Competitiva por Categoria
 
 > Data: Abril 2026 | Revisão baseada em pesquisa de mercado das maiores plataformas do Brasil e global.
 
@@ -6,7 +6,7 @@
 
 ## VISÃO GERAL DO APLICATIVO
 
-O UrbGO é uma plataforma de logística urbana multi-categoria que conecta clientes a entregadores/motoristas. Suporta 6 categorias de veículo: Moto, Carro, Bike, MotoTáxi, Utilitário (Van) e Carreto (Caminhão).
+O ArkGO é uma plataforma de logística urbana multi-categoria que conecta clientes a entregadores/motoristas. Suporta 6 categorias de veículo: Moto, Carro, Bike, MotoTáxi, Utilitário (Van) e Carreto (Caminhão).
 
 ---
 
@@ -16,7 +16,7 @@ O UrbGO é uma plataforma de logística urbana multi-categoria que conecta clien
 
 **Benchmarks:** Uber Courier, Lalamove LalaGo/LalaPro, Loggi, inDrive Courier
 
-| Feature | Uber Courier | Lalamove | Loggi | **UrbGO** |
+| Feature | Uber Courier | Lalamove | Loggi | **ArkGO** |
 |---|---|---|---|---|
 | Nome + telefone do destinatário | ✅ obrigatório | ✅ por parada | ✅ | ❌ → **implementar** |
 | Nome + telefone do remetente | ✅ | ✅ | ✅ | ❌ → **implementar** |
@@ -41,7 +41,7 @@ O UrbGO é uma plataforma de logística urbana multi-categoria que conecta clien
 
 **Benchmarks:** Uber Courier Car, Lalamove Hatch/Sedan/Utilitário, inDrive Delivery
 
-| Feature | Uber Courier | Lalamove | **UrbGO** |
+| Feature | Uber Courier | Lalamove | **ArkGO** |
 |---|---|---|---|
 | Capacidade em kg + litros na UI | ❌ implicit | ✅ "300kg / 375L" | ❌ → **melhorar** |
 | Sugestão upgrade/downgrade | ✅ | ✅ | ❌ → **implementar** |
@@ -57,7 +57,7 @@ O UrbGO é uma plataforma de logística urbana multi-categoria que conecta clien
 
 **Benchmarks:** iFood Pedal, Rappi Cycling, inDrive on-foot/bike
 
-| Feature | iFood | Rappi | **UrbGO** |
+| Feature | iFood | Rappi | **ArkGO** |
 |---|---|---|---|
 | Limite de raio (≤ 3km) validado | ✅ backend | ✅ backend | ❌ → **implementar** |
 | Limite de peso aplicado (≤ 5kg) | ✅ implicit | ✅ | ❌ só texto |
@@ -74,7 +74,7 @@ O UrbGO é uma plataforma de logística urbana multi-categoria que conecta clien
 
 **Benchmarks:** 99Moto, Uber Moto, inDrive Moto
 
-| Feature | 99Moto | Uber Moto | inDrive | **UrbGO** |
+| Feature | 99Moto | Uber Moto | inDrive | **ArkGO** |
 |---|---|---|---|---|
 | Fluxo sem campos de pacote | ✅ | ✅ | ✅ | ❌ usa fluxo de entrega |
 | Aviso de capacete obrigatório | ✅ 1ª viagem | ✅ | ✅ | ❌ → **implementar** |
@@ -94,7 +94,7 @@ O UrbGO é uma plataforma de logística urbana multi-categoria que conecta clien
 
 **Benchmarks:** Lalamove Utilitário/Van, AiQFrete, frete.com urban
 
-| Feature | Lalamove | AiQFrete | **UrbGO** |
+| Feature | Lalamove | AiQFrete | **ArkGO** |
 |---|---|---|---|
 | Capacidade detalhada (kg + litros + cm) | ✅ "1.000kg / 267×179×166cm" | ✅ | ❌ só "650kg" → **melhorar** |
 | Ajudante (helper) — 1 ou 2 | ✅ obrigatório | ✅ | ❌ → **implementar** |
@@ -113,7 +113,7 @@ O UrbGO é uma plataforma de logística urbana multi-categoria que conecta clien
 
 **Decisão estratégica (implementada):** Reposicionado de "Caminhão" (frete rodoviário) para "Carreto" (mudanças urbanas), seguindo o modelo da Lalamove. Frete rodoviário requer RNTRC (ANTT), CIOT, Piso Mínimo ANTT — altamente regulamentado.
 
-| Feature | Lalamove Carreto | FreteBras | **UrbGO** |
+| Feature | Lalamove Carreto | FreteBras | **ArkGO** |
 |---|---|---|---|
 | Tipo de carga (Móveis/Obra/Comercial) | ✅ | ✅ (espécie) | ❌ → **implementar** |
 | Ajudante (1/2/3) | ✅ | N/A | ❌ → **implementar** |
@@ -121,7 +121,7 @@ O UrbGO é uma plataforma de logística urbana multi-categoria que conecta clien
 | Número de cômodos | ❌ | ❌ | ❌ → **implementar** |
 | Preço discriminado (frete + helpers) | ✅ | ✅ | ❌ |
 
-**Diferença de modelo:** FreteBras usa marketplace de frete (shipper posta, motoristas ofertam). Para UrbGO: modelo on-demand (cliente pede, motorista aceita) é adequado para carreto urbano/mudanças.
+**Diferença de modelo:** FreteBras usa marketplace de frete (shipper posta, motoristas ofertam). Para ArkGO: modelo on-demand (cliente pede, motorista aceita) é adequado para carreto urbano/mudanças.
 
 ---
 

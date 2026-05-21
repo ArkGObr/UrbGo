@@ -53,6 +53,10 @@ bool driverCategoryNeedsCnh(VehicleCategory category) {
   return category != VehicleCategory.bike;
 }
 
+bool driverCategoryNeedsRg(VehicleCategory category) {
+  return category == VehicleCategory.bike;
+}
+
 bool driverCategoryNeedsAdditionalPermit(VehicleCategory category) {
   return category == VehicleCategory.mototaxi ||
       category == VehicleCategory.van ||
@@ -77,6 +81,7 @@ List<String> missingDriverRegistrationItems({
   required String cnhNumber,
   required String cnhCategory,
   required DateTime? cnhExpirationDate,
+  required String rgNumber,
   required String addressZipCode,
   required String addressNumber,
   required String addressLabel,
@@ -93,6 +98,10 @@ List<String> missingDriverRegistrationItems({
 
   if (addressNumber.trim().isEmpty) {
     missing.add('número do endereço');
+  }
+
+  if (driverCategoryNeedsRg(category) && rgNumber.trim().isEmpty) {
+    missing.add('número do RG');
   }
 
   if (!hasIdentityDocument) {

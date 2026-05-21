@@ -213,7 +213,7 @@ BEGIN
   FROM public.motoboys m
   JOIN public.users u ON u.id = m.id
   CROSS JOIN LATERAL (
-    SELECT public.urbgo_distance_km(
+    SELECT public.arkgo_distance_km(
       m.current_lat,
       m.current_lng,
       NEW.pickup_lat,

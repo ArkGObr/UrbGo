@@ -6,8 +6,8 @@ import '../core/constants/app_spacing.dart';
 import '../core/constants/app_typography.dart';
 import 'router.dart';
 
-class UrbGoApp extends ConsumerWidget {
-  const UrbGoApp({super.key});
+class ArkGoApp extends ConsumerWidget {
+  const ArkGoApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -20,7 +20,7 @@ class UrbGoApp extends ConsumerWidget {
     ));
 
     return MaterialApp.router(
-      title: 'UrbGo',
+      title: 'ArkGo',
       debugShowCheckedModeBanner: false,
       routerConfig: router,
       theme: _buildTheme(),

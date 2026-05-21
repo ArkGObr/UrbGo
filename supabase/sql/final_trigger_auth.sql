@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════
--- URBGO — Otimização Definitiva do Trigger (Ignorando RLS Blockers)
+-- ARKGO — Otimização Definitiva do Trigger (Ignorando RLS Blockers)
 -- Execute este bloco completo no Supabase SQL Editor
 -- ═══════════════════════════════════════════════════════════════
 

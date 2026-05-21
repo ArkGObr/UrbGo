@@ -25,7 +25,7 @@ BEGIN
       AND  m.vehicle_category = NEW.vehicle_category
     LIMIT 50
   LOOP
-    PERFORM public.urbgo_send_push(
+    PERFORM public.arkgo_send_push(
       r.fcm_token,
       'Nova corrida disponível! 📦',
       body_msg,

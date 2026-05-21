@@ -117,7 +117,7 @@ class _ClientHomeScreenState extends ConsumerState<ClientHomeScreen> {
                   children: [
                     TileLayer(
                       urlTemplate: AppConstants.mapTileUrl,
-                      userAgentPackageName: 'com.appmoove.urbgo',
+                      userAgentPackageName: 'com.appmoove.arkgo',
                     ),
                     if (_currentPosition != null)
                       MarkerLayer(
@@ -167,11 +167,11 @@ class _ClientHomeScreenState extends ConsumerState<ClientHomeScreen> {
                     // Logo central
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.md,
+                        horizontal: AppSpacing.xl,
                         vertical: 8,
                       ),
                       decoration: BoxDecoration(
-                        color: AppColors.surface,
+                        color: const Color(0xFF060606),
                         borderRadius: BorderRadius.circular(AppRadius.full),
                         boxShadow: [
                           BoxShadow(
@@ -184,28 +184,13 @@ class _ClientHomeScreenState extends ConsumerState<ClientHomeScreen> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Image.asset(
-                            'assets/logo.png',
-                            width: 24,
-                            height: 24,
-                            fit: BoxFit.contain,
-                          ),
-                          const SizedBox(width: AppSpacing.sm),
-                          RichText(
-                            text: TextSpan(
-                              style: AppTypography.h3.copyWith(height: 1.2),
-                              children: const [
-                                TextSpan(
-                                  text: 'Urb',
-                                  style: TextStyle(
-                                    color: AppColors.textPrimary,
-                                  ),
-                                ),
-                                TextSpan(
-                                  text: 'Go',
-                                  style: TextStyle(color: AppColors.primary),
-                                ),
-                              ],
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(AppRadius.lg),
+                            child: Image.asset(
+                              'assets/arkgo-logo.png',
+                              height: 34,
+                              fit: BoxFit.contain,
+                              filterQuality: FilterQuality.high,
                             ),
                           ),
                         ],

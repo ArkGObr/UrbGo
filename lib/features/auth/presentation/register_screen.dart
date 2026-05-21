@@ -38,6 +38,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _yearCtrl = TextEditingController();
   final _documentCtrl = TextEditingController();
   final _motoboyCpfCtrl = TextEditingController();
+  final _rgNumberCtrl = TextEditingController();
   final _cnhNumberCtrl = TextEditingController();
   final _cnhCategoryCtrl = TextEditingController();
   final _addressZipCtrl = TextEditingController();
@@ -87,6 +88,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _documentCtrl.dispose();
     _yearCtrl.dispose();
     _motoboyCpfCtrl.dispose();
+    _rgNumberCtrl.dispose();
     _cnhNumberCtrl.dispose();
     _cnhCategoryCtrl.dispose();
     _addressZipCtrl.dispose();
@@ -116,6 +118,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       final missing = missingDriverRegistrationItems(
         category: _selectedCategory!.category,
         cpf: _motoboyCpfCtrl.text.replaceAll(RegExp(r'\D'), ''),
+        rgNumber: _rgNumberCtrl.text.trim(),
         vehiclePlate: _plateCtrl.text.trim(),
         vehicleModel: _modelCtrl.text.trim(),
         vehicleYear: _yearCtrl.text.trim(),
@@ -165,6 +168,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               : null,
           motoboyCpf: _selectedRole == 'motoboy'
               ? _motoboyCpfCtrl.text.replaceAll(RegExp(r'\D'), '')
+              : null,
+          rgNumber: _selectedRole == 'motoboy' &&
+                  _selectedCategory != null &&
+                  driverCategoryNeedsRg(_selectedCategory!.category)
+              ? _rgNumberCtrl.text.trim()
               : null,
           cnhNumber: _selectedRole == 'motoboy'
               ? _cnhNumberCtrl.text.trim()
@@ -246,6 +254,18 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final file = File(picked.path);
     setState(() {
       onSelected(file);
+    });
+  }
+
+  Future<void> _pickSelfie() async {
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.camera,
+      preferredCameraDevice: CameraDevice.front,
+      imageQuality: 85,
+    );
+    if (picked == null) return;
+    setState(() {
+      _selfieWithDocumentFile = File(picked.path);
     });
   }
 
@@ -786,6 +806,32 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           ),
           const SizedBox(height: AppSpacing.lg),
           if (_selectedCategory != null &&
+              driverCategoryNeedsRg(_selectedCategory!.category)) ...[
+            const SizedBox(height: AppSpacing.lg),
+            TextFormField(
+              controller: _rgNumberCtrl,
+              keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.next,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(9),
+              ],
+              style: AppTypography.bodyLarge.copyWith(
+                color: AppColors.textPrimary,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'Número do RG',
+                hintText: 'Somente números',
+                prefixIcon: Icon(
+                  Icons.badge_outlined,
+                  color: AppColors.textTertiary,
+                  size: 20,
+                ),
+              ),
+              validator: (v) => Validators.required(v, field: 'Número do RG'),
+            ),
+          ],
+          if (_selectedCategory != null &&
               driverCategoryNeedsPlate(_selectedCategory!.category)) ...[
             TextFormField(
               controller: _plateCtrl,
@@ -1072,9 +1118,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         const SizedBox(height: AppSpacing.md),
         _DocumentUploadTile(
           label: 'Selfie para reconhecimento facial',
-          subtitle: 'Foto nítida do rosto para reconhecimento facial',
+          subtitle: 'A câmera frontal será aberta automaticamente',
           file: _selfieWithDocumentFile,
-          onTap: () => _pickDocument((file) => _selfieWithDocumentFile = file),
+          onTap: _pickSelfie,
         ),
         if (driverCategoryNeedsVehicleDocument(
           _selectedCategory!.category,

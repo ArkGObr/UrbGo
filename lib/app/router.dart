@@ -14,6 +14,8 @@ import '../features/client/presentation/create_delivery_screen.dart';
 import '../features/client/presentation/tracking_screen.dart';
 import '../features/client/presentation/client_profile_screen.dart';
 import '../features/client/presentation/chat_screen.dart';
+import '../features/admin/presentation/analytics_dashboard_screen.dart';
+import '../features/admin/presentation/investor_pitch_screen.dart';
 import '../features/motoboy/presentation/motoboy_home_screen.dart';
 import '../features/motoboy/presentation/available_runs_screen.dart';
 import '../features/motoboy/presentation/active_run_screen.dart';
@@ -275,6 +277,20 @@ final routerProvider = Provider<GoRouter>((ref) {
             },
           ),
         ],
+      ),
+      GoRoute(
+        path: '/admin/analytics',
+        pageBuilder: (_, state) => fadeThroughTransition(
+          key: state.pageKey,
+          child: const AnalyticsDashboardScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/admin/pitch',
+        pageBuilder: (_, state) => fadeThroughTransition(
+          key: state.pageKey,
+          child: const InvestorPitchScreen(),
+        ),
       ),
     ],
   );

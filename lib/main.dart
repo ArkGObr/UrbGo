@@ -29,5 +29,5 @@ Future<void> main() async {
     debugPrint('[Flutter Error]: ${details.exceptionAsString()}');
   };
 
-  runApp(const ProviderScope(child: UrbGoApp()));
+  runApp(const ProviderScope(child: ArkGoApp()));
 }

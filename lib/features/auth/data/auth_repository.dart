@@ -21,6 +21,7 @@ class AuthRepository {
     String? vehicleModel,
     int? vehicleYear,
     String? motoboyCpf,
+    String? rgNumber,
     String? cnhNumber,
     String? cnhCategory,
     DateTime? cnhExpirationDate,
@@ -39,7 +40,7 @@ class AuthRepository {
     final response = await _db.auth.signUp(
       email: email,
       password: password,
-      emailRedirectTo: 'urbgo://login-callback',
+      emailRedirectTo: 'arkgo://login-callback',
       data: {
         'name': name,
         'phone': phone,
@@ -51,6 +52,7 @@ class AuthRepository {
         if (vehicleModel != null) 'vehicle_model': vehicleModel,
         if (vehicleYear != null) 'vehicle_year': vehicleYear,
         if (motoboyCpf != null) 'cpf': motoboyCpf,
+        if (rgNumber != null) 'rg_number': rgNumber,
         if (cnhNumber != null) 'cnh_number': cnhNumber,
         if (cnhCategory != null) 'cnh_category': cnhCategory,
         if (cnhExpirationDate != null)
@@ -71,6 +73,7 @@ class AuthRepository {
         userId: userId,
         category: category,
         cpf: motoboyCpf,
+        rgNumber: rgNumber,
         vehiclePlate: vehiclePlate,
         vehicleCategory: selectedVehicleCategory,
         vehicleModel: vehicleModel,
@@ -167,6 +170,7 @@ class AuthRepository {
     required String userId,
     required VehicleCategory category,
     String? cpf,
+    String? rgNumber,
     String? vehiclePlate,
     String? vehicleCategory,
     String? vehicleModel,
@@ -214,6 +218,7 @@ class AuthRepository {
         missingDriverRegistrationItems(
           category: category,
           cpf: cpf ?? '',
+          rgNumber: rgNumber ?? '',
           vehiclePlate: vehiclePlate ?? '',
           vehicleModel: vehicleModel ?? '',
           vehicleYear: vehicleYear?.toString() ?? '',
@@ -246,6 +251,7 @@ class AuthRepository {
       'wallet_balance': 0.0,
       'is_online': false,
       'cpf': cpf,
+      'rg_number': rgNumber,
       'vehicle_plate': vehiclePlate,
       'vehicle_category': vehicleCategory,
       'vehicle_model': vehicleModel,

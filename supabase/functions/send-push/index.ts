@@ -113,7 +113,7 @@ async function sendToToken(
           android: {
             priority: "HIGH",
             notification: {
-              channel_id: "urbgo_channel",
+              channel_id: "arkgo_channel",
               notification_priority: "PRIORITY_HIGH",
               default_sound: true,
               default_vibrate_timings: true,

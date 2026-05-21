@@ -171,28 +171,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 // Logo
                 FadeSlideIn(
                   delay: const Duration(milliseconds: 100),
-                  child: Row(
-                    children: [
-                      Image.asset(
-                        'assets/logo.png',
-                        width: 48,
-                        height: 48,
-                        fit: BoxFit.contain,
-                      ),
-                      const SizedBox(width: AppSpacing.md),
-                      RichText(
-                        text: TextSpan(
-                          style: AppTypography.h1,
-                          children: [
-                            const TextSpan(text: 'Urb'),
-                            TextSpan(
-                              text: 'Go',
-                              style: AppTypography.h1.copyWith(color: AppColors.primary),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                  child: Image.asset(
+                    'assets/arkgo-logo.png',
+                    width: 180,
+                    fit: BoxFit.contain,
                   ),
                 ),
                 const SizedBox(height: AppSpacing.xl2),

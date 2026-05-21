@@ -1,4 +1,4 @@
-# UrbGO — Roadmap & Análise Comparativa
+# ArkGO — Roadmap & Análise Comparativa
 
 > Análise realizada em: Abril/2026  
 > Comparado com: Uber Flash, iFood Entregador, Rappi, Zippa, Loggi
@@ -7,7 +7,7 @@
 
 ## Resumo Executivo
 
-O UrbGO está bem estruturado para o lançamento MVP. A arquitetura técnica (Flutter + Supabase + FCM) é sólida. As principais lacunas são de **segurança/confiabilidade** (race conditions, GPS background) e de **experiência do entregador** (sem métricas de desempenho, sem histórico de ganhos detalhado).
+O ArkGO está bem estruturado para o lançamento MVP. A arquitetura técnica (Flutter + Supabase + FCM) é sólida. As principais lacunas são de **segurança/confiabilidade** (race conditions, GPS background) e de **experiência do entregador** (sem métricas de desempenho, sem histórico de ganhos detalhado).
 
 ---
 
@@ -74,7 +74,7 @@ O UrbGO está bem estruturado para o lançamento MVP. A arquitetura técnica (Fl
 
 ## Comparação por funcionalidade
 
-| Funcionalidade | UrbGO | Uber Flash | iFood | Rappi | Zippa |
+| Funcionalidade | ArkGO | Uber Flash | iFood | Rappi | Zippa |
 |----------------|-------|-----------|-------|-------|-------|
 | GPS em segundo plano | ✅* | ✅ | ✅ | ✅ | ✅ |
 | ETA para cliente | ❌ | ✅ | ✅ | ✅ | ✅ |

@@ -280,7 +280,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
 
   Future<void> _shareRide(DeliveryModel delivery) async {
     final text =
-        'Estou em uma corrida pela UrbGO.\n'
+        'Estou em uma corrida pela ArkGO.\n'
         'Origem: ${delivery.pickupAddress}\n'
         'Destino: ${delivery.deliveryAddress}';
     await Clipboard.setData(ClipboardData(text: text));
@@ -494,7 +494,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen>
                           children: [
                             TileLayer(
                               urlTemplate: AppConstants.mapTileUrl,
-                              userAgentPackageName: 'com.urbgo.app',
+                              userAgentPackageName: 'com.arkgo.app',
                             ),
                             // Rota
                             if (_routePoints.isNotEmpty)

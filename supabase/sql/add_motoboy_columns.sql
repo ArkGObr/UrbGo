@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════
--- URBGO — Atualização de Colunas do Cadastro do Motoboy
+-- ARKGO — Atualização de Colunas do Cadastro do Motoboy
 -- Execute este bloco completo no Supabase SQL Editor
 -- ═══════════════════════════════════════════════════════════════
 

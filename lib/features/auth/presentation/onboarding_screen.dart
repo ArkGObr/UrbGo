@@ -23,7 +23,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   static const _items = [
     _OnboardingItem(
       icon: Icons.bolt_rounded,
-      title: 'Bem-vindo ao UrbGO',
+      title: 'Bem-vindo ao ArkGO',
       subtitle:
           'Plataforma completa de mobilidade urbana. Entregas de qualquer tamanho e corridas com passageiros — onde você estiver.',
     ),

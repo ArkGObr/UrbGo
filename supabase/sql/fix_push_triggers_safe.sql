@@ -9,7 +9,7 @@
 -- ═══════════════════════════════════════════════════════════════
 
 -- ── Helper: tenta enviar push; silencia qualquer erro ──────────
-CREATE OR REPLACE FUNCTION public.urbgo_send_push(
+CREATE OR REPLACE FUNCTION public.arkgo_send_push(
   p_token TEXT,
   p_title TEXT,
   p_body  TEXT,
@@ -80,7 +80,7 @@ BEGIN
         AND m.vehicle_category = NEW.vehicle_category
       LIMIT 50
     LOOP
-      PERFORM public.urbgo_send_push(
+      PERFORM public.arkgo_send_push(
         r.fcm_token,
         'Nova corrida disponível!',
         'Você recebe R$ ' || net_val::TEXT || ' — Aceite rápido!',
@@ -136,7 +136,7 @@ BEGIN
     v_net_val := ROUND((NEW.value - NEW.commission)::NUMERIC, 2);
 
     IF NEW.status = 'accepted' AND OLD.status = 'pending' THEN
-      PERFORM public.urbgo_send_push(
+      PERFORM public.arkgo_send_push(
         v_client_token,
         'Entregador a caminho!',
         COALESCE(v_motoboy_name, 'Seu entregador') || ' aceitou o pedido.',
@@ -144,7 +144,7 @@ BEGIN
       );
 
     ELSIF NEW.status = 'in_progress' AND OLD.status = 'accepted' THEN
-      PERFORM public.urbgo_send_push(
+      PERFORM public.arkgo_send_push(
         v_client_token,
         'Pacote coletado!',
         'Seu pedido está a caminho do destino.',
@@ -152,13 +152,13 @@ BEGIN
       );
 
     ELSIF NEW.status = 'completed' AND OLD.status = 'in_progress' THEN
-      PERFORM public.urbgo_send_push(
+      PERFORM public.arkgo_send_push(
         v_client_token,
         'Entrega concluída! ✓',
         'Seu pedido chegou com sucesso. Avalie seu entregador!',
         jsonb_build_object('deliveryId', NEW.id::TEXT, 'role', 'client', 'type', 'completed')
       );
-      PERFORM public.urbgo_send_push(
+      PERFORM public.arkgo_send_push(
         v_motoboy_token,
         'Corrida finalizada!',
         'Você ganhou R$ ' || v_net_val::TEXT || ' nesta entrega.',
@@ -166,14 +166,14 @@ BEGIN
       );
 
     ELSIF NEW.status = 'cancelled' THEN
-      PERFORM public.urbgo_send_push(
+      PERFORM public.arkgo_send_push(
         v_client_token,
         'Entrega cancelada',
         'Sua entrega foi cancelada.',
         jsonb_build_object('deliveryId', NEW.id::TEXT, 'role', 'client', 'type', 'cancelled')
       );
       IF v_motoboy_token IS NOT NULL THEN
-        PERFORM public.urbgo_send_push(
+        PERFORM public.arkgo_send_push(
           v_motoboy_token,
           'Corrida cancelada',
           'A entrega foi cancelada pelo cliente.',
@@ -214,7 +214,7 @@ BEGIN
     SELECT u.fcm_token INTO v_token
     FROM users u WHERE u.id = NEW.motoboy_id;
 
-    PERFORM public.urbgo_send_push(
+    PERFORM public.arkgo_send_push(
       v_token,
       'Saldo recarregado!',
       'R$ ' || ROUND(NEW.amount::NUMERIC, 2)::TEXT || ' adicionados à sua carteira.',

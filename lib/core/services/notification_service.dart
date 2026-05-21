@@ -8,8 +8,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 // Canal principal — corridas, status, saldo
 const _kAndroidChannel = AndroidNotificationChannel(
-  'urbgo_channel',
-  'UrbGo',
+  'arkgo_channel',
+  'ArkGo',
   description: 'Notificações de corridas e saldo',
   importance: Importance.high,
   playSound: true,
@@ -17,8 +17,8 @@ const _kAndroidChannel = AndroidNotificationChannel(
 
 // Canal para notificações de re-engajamento (inatividade)
 const _kReengagementChannel = AndroidNotificationChannel(
-  'urbgo_reengagement',
-  'UrbGo — Lembretes',
+  'arkgo_reengagement',
+  'ArkGo — Lembretes',
   description: 'Lembretes para voltar a fazer entregas',
   importance: Importance.defaultImportance,
   playSound: true,
@@ -48,7 +48,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       >()
       ?.createNotificationChannel(_kAndroidChannel);
 
-  final title = message.data['title'] as String? ?? 'UrbGo';
+  final title = message.data['title'] as String? ?? 'ArkGo';
   final body = message.data['body'] as String? ?? '';
   if (title.isEmpty) return;
 

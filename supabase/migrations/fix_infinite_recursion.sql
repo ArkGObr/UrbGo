@@ -1,5 +1,5 @@
 -- ══════════════════════════════════════════════════════════════
--- URBGO — CORREÇÃO DEFINITIVA: Recursão Infinita em RLS
+-- ARKGO — CORREÇÃO DEFINITIVA: Recursão Infinita em RLS
 -- Execute TODO este bloco no Supabase SQL Editor
 -- ══════════════════════════════════════════════════════════════
 

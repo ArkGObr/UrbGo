@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS public.delivery_notification_targets (
 CREATE INDEX IF NOT EXISTS delivery_notification_targets_pending_idx
   ON public.delivery_notification_targets(delivery_id, sent_at, available_from);
 
-CREATE OR REPLACE FUNCTION public.urbgo_distance_km(
+CREATE OR REPLACE FUNCTION public.arkgo_distance_km(
   lat1 DOUBLE PRECISION,
   lng1 DOUBLE PRECISION,
   lat2 DOUBLE PRECISION,
@@ -89,7 +89,7 @@ BEGIN
     v_body := 'Voce recebe R$ ' || v_net_val::TEXT
       || ' • a ' || r.distance_km::TEXT || ' km da coleta';
 
-    PERFORM public.urbgo_send_push(
+    PERFORM public.arkgo_send_push(
       r.fcm_token,
       'Nova corrida disponivel! 📦',
       v_body,
@@ -140,7 +140,7 @@ BEGIN
   FROM public.motoboys m
   JOIN public.users u ON u.id = m.id
   CROSS JOIN LATERAL (
-    SELECT public.urbgo_distance_km(
+    SELECT public.arkgo_distance_km(
       m.current_lat,
       m.current_lng,
       NEW.pickup_lat,
@@ -191,14 +191,14 @@ BEGIN
       AND d.status = 'accepted'
       AND d.pickup_arrival_notified_at IS NULL
       AND u.fcm_token IS NOT NULL
-      AND public.urbgo_distance_km(
+      AND public.arkgo_distance_km(
             NEW.current_lat,
             NEW.current_lng,
             d.pickup_lat,
             d.pickup_lng
           ) <= 0.15
   LOOP
-    PERFORM public.urbgo_send_push(
+    PERFORM public.arkgo_send_push(
       r.fcm_token,
       'Entregador chegou à coleta',
       'Seu pedido está prestes a ser retirado.',

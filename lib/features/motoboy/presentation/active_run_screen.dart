@@ -19,8 +19,15 @@ import '../../../core/services/notification_service.dart';
 import '../../../core/services/route_service.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/widgets/app_toast.dart';
+import '../../../data/models/route_result.dart' as smart_route;
 import '../../client/data/delivery_repository.dart';
 import '../../client/domain/delivery_model.dart';
+import '../../delivery/domain/delivery_session.dart';
+import '../../delivery/presentation/widgets/copilot_speed_indicator.dart';
+import '../../delivery/presentation/widgets/copilot_status_bar.dart';
+import '../../delivery/presentation/widgets/copilot_settings_sheet.dart';
+import '../../delivery/presentation/widgets/reroute_comparison_sheet.dart';
+import '../../delivery/services/copilot_service.dart';
 import '../../shared/widgets/primary_button.dart';
 import '../../shared/widgets/vehicle_badge.dart';
 import '../domain/motoboy_providers.dart';
@@ -151,12 +158,30 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
     if (stops.isEmpty) return;
     if (mounted) setState(() => _routePoints = stops);
     try {
-      final points = await _routeService
-          .getRouteWithStops(stops)
-          .then((result) => result.points);
+      final route = await _routeService.getRouteWithStops(stops);
+      final points = route.points;
       if (mounted) {
         setState(() => _routePoints = points);
         _fitBounds();
+      }
+      if (_delivery != null) {
+        ref
+            .read(copilotServiceProvider.notifier)
+            .startMonitoring(
+              DeliverySession(
+                deliveryId: _delivery!.id,
+                destination: stops.last,
+                routeResult: smart_route.RouteResult(
+                  distanceMeters: route.distanceKm * 1000,
+                  durationSeconds: route.durationSeconds,
+                  durationInTrafficSeconds: route.durationSeconds,
+                  source: smart_route.RouteSource.osrm,
+                  polyline: route.points,
+                  trafficRatio: 1,
+                  computedAt: DateTime.now(),
+                ),
+              ),
+            );
       }
     } catch (_) {}
   }
@@ -355,6 +380,7 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
     try {
       ref.read(notificationServiceProvider).cancelOngoingRunNotification();
     } catch (_) {}
+    ref.read(copilotServiceProvider.notifier).stopMonitoring();
     super.dispose();
   }
 
@@ -706,6 +732,7 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
   @override
   Widget build(BuildContext context) {
     final myPos = ref.watch(_myPositionProvider);
+    final copilotState = ref.watch(copilotServiceProvider);
 
     if (_isLoading || _delivery == null) {
       return const Scaffold(
@@ -745,7 +772,7 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                   children: [
                     TileLayer(
                       urlTemplate: AppConstants.mapTileUrl,
-                      userAgentPackageName: 'com.urbgo.app',
+                      userAgentPackageName: 'com.arkgo.app',
                     ),
                     if (_routePoints.isNotEmpty)
                       PolylineLayer(
@@ -899,32 +926,78 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                 Positioned(
                   top: MediaQuery.of(context).padding.top + 8,
                   right: AppSpacing.lg,
-                  child: GestureDetector(
-                    onTap: () {
-                      final name = Uri.encodeComponent('Cliente');
-                      context.push('/motoboy/chat/${delivery.id}?name=$name');
-                    },
-                    child: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: AppColors.background,
-                        borderRadius: BorderRadius.circular(AppRadius.sm),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.3),
-                            blurRadius: 10,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GestureDetector(
+                        onTap: () {
+                          showModalBottomSheet<void>(
+                            context: context,
+                            backgroundColor: AppColors.surface,
+                            builder: (_) => const CopilotSettingsSheet(),
+                          );
+                        },
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: AppColors.background,
+                            borderRadius: BorderRadius.circular(AppRadius.sm),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.3),
+                                blurRadius: 10,
+                              ),
+                            ],
                           ),
-                        ],
+                          child: const Icon(
+                            Icons.tune_rounded,
+                            color: AppColors.textPrimary,
+                            size: 22,
+                          ),
+                        ),
                       ),
-                      child: const Icon(
-                        Icons.chat_bubble_outline_rounded,
-                        color: AppColors.primary,
-                        size: 22,
+                      const SizedBox(width: AppSpacing.sm),
+                      GestureDetector(
+                        onTap: () {
+                          final name = Uri.encodeComponent('Cliente');
+                          context.push(
+                            '/motoboy/chat/${delivery.id}?name=$name',
+                          );
+                        },
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: AppColors.background,
+                            borderRadius: BorderRadius.circular(AppRadius.sm),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.3),
+                                blurRadius: 10,
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.chat_bubble_outline_rounded,
+                            color: AppColors.primary,
+                            size: 22,
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
+                if (copilotState.isMonitoring)
+                  Positioned(
+                    top: MediaQuery.of(context).padding.top + 72,
+                    right: AppSpacing.lg,
+                    child: CopilotSpeedIndicator(
+                      currentSpeed: copilotState.currentSpeedKmh,
+                      expectedSpeed: copilotState.expectedSpeedKmh,
+                      ratio: copilotState.ratio,
+                    ),
+                  ),
 
                 // Botão navegar (estilo Uber)
                 Positioned(
@@ -1007,6 +1080,54 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                     ],
                   ),
                 ),
+                if (copilotState.isMonitoring)
+                  Positioned(
+                    left: AppSpacing.lg,
+                    right: AppSpacing.lg,
+                    bottom: 88,
+                    child: CopilotStatusBar(
+                      state: copilotState,
+                      onIgnore: () {
+                        ref
+                            .read(copilotServiceProvider.notifier)
+                            .dismissAlert();
+                      },
+                      onSeeReroute: () {
+                        final currentRoute = smart_route.RouteResult(
+                          distanceMeters:
+                              (_lastRouteResult?.distanceKm ?? 0) * 1000,
+                          durationSeconds:
+                              _lastRouteResult?.durationSeconds ?? 0,
+                          durationInTrafficSeconds:
+                              _lastRouteResult?.durationSeconds ?? 0,
+                          source: smart_route.RouteSource.osrm,
+                          polyline: _routePoints,
+                          trafficRatio: 1,
+                          computedAt: DateTime.now(),
+                        );
+                        final alternativeRoute = copilotState.suggestedRoute;
+                        if (alternativeRoute == null) return;
+                        showModalBottomSheet<void>(
+                          context: context,
+                          backgroundColor: AppColors.surface,
+                          isScrollControlled: true,
+                          builder: (_) => RerouteComparisonSheet(
+                            currentRoute: currentRoute,
+                            alternativeRoute: alternativeRoute,
+                            onConfirm: () {
+                              Navigator.pop(context);
+                              setState(
+                                () => _routePoints = alternativeRoute.polyline,
+                              );
+                              ref
+                                  .read(copilotServiceProvider.notifier)
+                                  .acceptReroute(alternativeRoute);
+                            },
+                          ),
+                        );
+                      },
+                    ),
+                  ),
               ],
             ),
           ),

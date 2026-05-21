@@ -19,7 +19,7 @@
 
 
 -- ── Helper: envia push para um único token ──────────────────────────────
-CREATE OR REPLACE FUNCTION public.urbgo_send_push(
+CREATE OR REPLACE FUNCTION public.arkgo_send_push(
   p_token TEXT,
   p_title TEXT,
   p_body  TEXT,
@@ -76,7 +76,7 @@ BEGIN
       AND m.vehicle_category = NEW.vehicle_category
     LIMIT 50                            -- limite de segurança no MVP
   LOOP
-    PERFORM public.urbgo_send_push(
+    PERFORM public.arkgo_send_push(
       r.fcm_token,
       'Nova corrida disponível!',
       'Você recebe R$ ' || net_val::TEXT || ' — Aceite rápido!',
@@ -134,7 +134,7 @@ BEGIN
   IF NEW.status = 'accepted' AND OLD.status = 'pending' THEN
 
     -- Cliente: motoboy aceitou
-    PERFORM public.urbgo_send_push(
+    PERFORM public.arkgo_send_push(
       v_client_token,
       'Entregador a caminho!',
       COALESCE(v_motoboy_name, 'Seu entregador') || ' aceitou o pedido e está indo buscar o pacote.',
@@ -145,7 +145,7 @@ BEGIN
   ELSIF NEW.status = 'in_progress' AND OLD.status = 'accepted' THEN
 
     -- Cliente: pacote coletado
-    PERFORM public.urbgo_send_push(
+    PERFORM public.arkgo_send_push(
       v_client_token,
       'Pacote coletado!',
       'Seu pedido foi retirado e está a caminho do destino.',
@@ -156,7 +156,7 @@ BEGIN
   ELSIF NEW.status = 'completed' AND OLD.status = 'in_progress' THEN
 
     -- Cliente: entrega concluída
-    PERFORM public.urbgo_send_push(
+    PERFORM public.arkgo_send_push(
       v_client_token,
       'Entrega concluída! ✓',
       'Seu pedido chegou com sucesso. Avalie seu entregador!',
@@ -164,7 +164,7 @@ BEGIN
     );
 
     -- Motoboy: corrida finalizada com ganho
-    PERFORM public.urbgo_send_push(
+    PERFORM public.arkgo_send_push(
       v_motoboy_token,
       'Corrida finalizada!',
       'Você ganhou R$ ' || v_net_val::TEXT || ' nesta entrega.',
@@ -175,7 +175,7 @@ BEGIN
   ELSIF NEW.status = 'cancelled' THEN
 
     -- Cliente: cancelado
-    PERFORM public.urbgo_send_push(
+    PERFORM public.arkgo_send_push(
       v_client_token,
       'Entrega cancelada',
       'Sua entrega foi cancelada. Entre em contato com o suporte se precisar de ajuda.',
@@ -184,7 +184,7 @@ BEGIN
 
     -- Motoboy (se havia um atribuído): notifica também
     IF v_motoboy_token IS NOT NULL THEN
-      PERFORM public.urbgo_send_push(
+      PERFORM public.arkgo_send_push(
         v_motoboy_token,
         'Corrida cancelada',
         'A entrega foi cancelada pelo cliente.',
@@ -225,7 +225,7 @@ BEGIN
   SELECT u.fcm_token INTO v_token
   FROM users u WHERE u.id = NEW.motoboy_id;
 
-  PERFORM public.urbgo_send_push(
+  PERFORM public.arkgo_send_push(
     v_token,
     'Saldo recarregado!',
     'R$ ' || ROUND(NEW.amount::NUMERIC, 2)::TEXT || ' foram adicionados à sua carteira.',

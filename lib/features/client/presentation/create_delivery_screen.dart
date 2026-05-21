@@ -16,10 +16,16 @@ import '../../../core/services/connectivity_service.dart';
 import '../../../core/services/dynamic_pricing_service.dart';
 import '../../../core/services/geocoding_service.dart';
 import '../../../core/services/route_service.dart';
+import '../../../data/models/fare_breakdown.dart';
+import '../../../data/models/route_result.dart' as smart_route;
+import '../../../data/repositories/route_repository.dart';
+import '../../../data/services/fare_calculator.dart';
 import '../../auth/domain/auth_provider.dart';
 import '../../shared/widgets/category_selector.dart';
+import '../../shared/widgets/fare_breakdown_card.dart';
 import '../../shared/widgets/price_preview_card.dart';
 import '../../shared/widgets/primary_button.dart';
+import '../../shared/widgets/traffic_badge.dart';
 import '../domain/client_providers.dart';
 
 class CreateDeliveryScreen extends ConsumerStatefulWidget {
@@ -88,10 +94,13 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
   String? _selectedRouteChoiceId;
   LatLng? _userLocation;
   SurgeInfo? _surgeInfo;
+  smart_route.RouteResult? _smartRouteResult;
+  FareBreakdown? _fareBreakdown;
+  bool _isRefreshingTraffic = false;
 
   // ── Detalhes state ─────────────────────────────────────────
   bool _isFragile = false;
-  int _helperCount = 0;
+  final int _helperCount = 0;
   bool _roundTrip = false;
   String? _cargoType;
   DateTime? _scheduledFor;
@@ -454,6 +463,8 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
         _routeResult = null;
         _routeChoices = [];
         _selectedRouteChoiceId = null;
+        _smartRouteResult = null;
+        _fareBreakdown = null;
       });
       return;
     }
@@ -494,6 +505,13 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
             _distanceKm = selectedRoute.route.distanceKm;
             _deliveryValue = realVal;
           });
+          unawaited(
+            _refreshTrafficAwarePricing(
+              from: from,
+              to: to,
+              distanceKm: selectedRoute.route.distanceKm,
+            ),
+          );
         }
         return;
       }
@@ -517,9 +535,57 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
           _distanceKm = result.distanceKm;
           _deliveryValue = realVal;
         });
+        unawaited(
+          _refreshTrafficAwarePricing(
+            from: from,
+            to: to,
+            distanceKm: result.distanceKm,
+          ),
+        );
       }
     } catch (e) {
       debugPrint('Erro ao recalcular rota: $e');
+    }
+  }
+
+  Future<void> _refreshTrafficAwarePricing({
+    required LatLng from,
+    required LatLng to,
+    required double distanceKm,
+  }) async {
+    if (_selectedCategory == null) return;
+    setState(() => _isRefreshingTraffic = true);
+    try {
+      final resolved = await ref
+          .read(routeRepositoryProvider)
+          .resolveRoute(from, to, isUrgent: _scheduledFor == null);
+      if (!mounted || _pickupLatLng != from || _deliveryLatLng != to) return;
+
+      final breakdown = FareCalculator.calculateBreakdown(
+        _selectedCategory!,
+        distanceKm,
+        surgeMultiplier: _surgeInfo?.multiplier ?? 1,
+        routeResult: resolved,
+      );
+      setState(() {
+        _smartRouteResult = resolved;
+        _fareBreakdown = breakdown;
+        _deliveryValue = breakdown.totalFare;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _smartRouteResult = null;
+        _fareBreakdown = FareCalculator.calculateBreakdown(
+          _selectedCategory!,
+          distanceKm,
+          surgeMultiplier: _surgeInfo?.multiplier ?? 1,
+        );
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshingTraffic = false);
+      }
     }
   }
 
@@ -659,7 +725,8 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
       if (user == null) return;
 
       final totalValue =
-          _deliveryValue! + PriceCalculator.helperFee(_helperCount);
+          (_fareBreakdown?.totalFare ?? _deliveryValue!) +
+          PriceCalculator.helperFee(_helperCount);
 
       final delivery = await ref
           .read(deliveryRepositoryProvider)
@@ -702,6 +769,17 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
             cargoType: _cargoType,
           );
 
+      if (_smartRouteResult != null) {
+        await ref
+            .read(deliveryRepositoryProvider)
+            .saveRouteSession(
+              deliveryId: delivery.id,
+              origin: _pickupLatLng!,
+              destination: _deliveryLatLng!,
+              routeResult: _smartRouteResult!,
+            );
+      }
+
       ref.invalidate(clientDeliveriesProvider);
 
       if (mounted) {
@@ -728,6 +806,15 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
         behavior: SnackBarBehavior.floating,
       ),
     );
+  }
+
+  String _formatArrival(smart_route.RouteResult routeResult) {
+    final arrival = DateTime.now().add(
+      Duration(seconds: routeResult.durationInTrafficSeconds),
+    );
+    final hour = arrival.hour.toString().padLeft(2, '0');
+    final minute = arrival.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
   }
 
   // ─────────────────────────────────────────────────────────
@@ -1345,7 +1432,8 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
   Widget _buildStepConfirm() {
     final isMotoTaxi = _isRide;
     final helperFee = PriceCalculator.helperFee(_helperCount);
-    final totalValue = (_deliveryValue ?? 0) + helperFee;
+    final totalValue =
+        (_fareBreakdown?.totalFare ?? _deliveryValue ?? 0) + helperFee;
 
     return SingleChildScrollView(
       key: const ValueKey('step_confirm'),
@@ -1363,6 +1451,50 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
               totalValue: totalValue,
               surgeInfo: _surgeInfo,
             ),
+          if (_smartRouteResult != null) ...[
+            const SizedBox(height: AppSpacing.md),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    'Chegada estimada: ${_formatArrival(_smartRouteResult!)} considerando trafego atual',
+                    style: AppTypography.bodyMedium,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                TrafficBadge(trafficRatio: _smartRouteResult!.trafficRatio),
+              ],
+            ),
+            if (_smartRouteResult!.isFallback) ...[
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                'Estimativa sem trafego ao vivo',
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ],
+          if (_isRefreshingTraffic) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              'Atualizando preco com trafego em tempo real...',
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+          if (_fareBreakdown != null) ...[
+            const SizedBox(height: AppSpacing.lg),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              child: FareBreakdownCard(
+                key: ValueKey(_fareBreakdown!.totalFare),
+                breakdown: _fareBreakdown!,
+              ),
+            ),
+          ],
           const SizedBox(height: AppSpacing.xl2),
 
           // Pagamento
@@ -1578,7 +1710,7 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
             children: [
               TileLayer(
                 urlTemplate: AppConstants.mapTileUrl,
-                userAgentPackageName: 'com.urbgo.app',
+                userAgentPackageName: 'com.arkgo.app',
               ),
               MarkerLayer(
                 markers: [

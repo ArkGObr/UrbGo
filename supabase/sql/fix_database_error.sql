@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════
--- URBGO — Correção de Falhas Críticas de Autenticação
+-- ARKGO — Correção de Falhas Críticas de Autenticação
 -- Execute este bloco completo no Supabase SQL Editor
 -- ═══════════════════════════════════════════════════════════════
 

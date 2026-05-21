@@ -14,9 +14,10 @@ class SplashScreen extends ConsumerWidget {
           // Splash Logo / Image
           Center(
             child: Image.asset(
-              'assets/logo-grande.png',
-              width: 500,
+              'assets/arkgo-logo.png',
+              width: 200,
               fit: BoxFit.contain,
+              filterQuality: FilterQuality.high,
             ),
           ),
           // Loading indicator at the bottom

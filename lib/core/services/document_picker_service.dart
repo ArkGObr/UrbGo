@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 
 class DocumentPickerService {
   static const MethodChannel _channel = MethodChannel(
-    'com.urbgo.app/document_picker',
+    'com.arkgo.app/document_picker',
   );
 
   Future<File?> pickPdf() async {

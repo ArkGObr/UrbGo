@@ -1,5 +1,5 @@
 -- ================================================================
--- UrbGO — Migration: Novos campos por categoria de entrega
+-- ArkGO — Migration: Novos campos por categoria de entrega
 -- Versão: 2026-04-24
 -- Executar no Supabase SQL Editor (Dashboard > SQL Editor)
 -- ================================================================

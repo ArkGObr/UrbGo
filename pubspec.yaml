@@ -1,5 +1,5 @@
-name: urbgo
-description: "UrbGo — App de intermediação logística urbana"
+name: arkgo
+description: "ArkGo — App de intermediação logística urbana"
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -53,5 +53,5 @@ flutter:
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: true
-  image_path: "assets/icon.png"
+  image_path: "assets/logo-icone.png"
   min_sdk_android: 23

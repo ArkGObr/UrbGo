@@ -1,6 +1,6 @@
 class AppConstants {
   static const double commissionRate = 0.25;
-  static const String appName = 'UrbGo';
+  static const String appName = 'ArkGo';
   static const int locationUpdateIntervalSeconds = 5;
   static const double minimumRechargeAmount = 10.0;
 

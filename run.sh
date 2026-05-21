@@ -14,7 +14,7 @@ SUPABASE_URL=$(grep '^SUPABASE_URL=' "$ENV_FILE" | cut -d= -f2-)
 SUPABASE_ANON_KEY=$(grep '^SUPABASE_ANON_KEY=' "$ENV_FILE" | cut -d= -f2-)
 ORS_API_KEY=$(grep '^ORS_API_KEY=' "$ENV_FILE" | cut -d= -f2-)
 
-echo "🚀 Iniciando UrbGo em modo desenvolvimento..."
+echo "🚀 Iniciando ArkGo em modo desenvolvimento..."
 
 flutter run \
   --dart-define=SUPABASE_URL="$SUPABASE_URL" \

@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════
--- URBGO — Atualização de Colunas do Cadastro de Clientes
+-- ARKGO — Atualização de Colunas do Cadastro de Clientes
 -- Execute este bloco completo no Supabase SQL Editor
 -- ═══════════════════════════════════════════════════════════════
 

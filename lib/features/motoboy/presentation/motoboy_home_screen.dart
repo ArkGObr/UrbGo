@@ -411,7 +411,7 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
                     children: [
                       TileLayer(
                         urlTemplate: AppConstants.mapTileUrl,
-                        userAgentPackageName: 'com.urbgo.app',
+                        userAgentPackageName: 'com.arkgo.app',
                         maxZoom: 19,
                       ),
                       if (_currentPosition != null)
@@ -594,23 +594,30 @@ class _FloatingHeader extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Image.asset(
-              'assets/logo.png',
-              width: 26,
-              height: 26,
-              fit: BoxFit.contain,
-            ),
-            const SizedBox(width: AppSpacing.xs),
-            RichText(
-              text: TextSpan(
-                style: AppTypography.h3,
-                children: [
-                  const TextSpan(text: 'Urb'),
-                  TextSpan(
-                    text: 'Go',
-                    style: AppTypography.h3.copyWith(color: AppColors.primary),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.xl,
+                vertical: 8,
+              ),
+              decoration: BoxDecoration(
+                color: const Color(0xFF060606),
+                borderRadius: BorderRadius.circular(AppRadius.full),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
                   ),
                 ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(AppRadius.lg),
+                child: Image.asset(
+                  'assets/arkgo-logo.png',
+                  height: 36,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
+                ),
               ),
             ),
           ],

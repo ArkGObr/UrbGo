@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════
--- URBGO — Correção de Bugs no Schema
+-- ARKGO — Correção de Bugs no Schema
 -- Execute este bloco completo no Supabase SQL Editor
 -- ═══════════════════════════════════════════════════════════════
 

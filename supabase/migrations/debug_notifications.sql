@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- UrbGo — Diagnóstico do pipeline de notificações
+-- ArkGo — Diagnóstico do pipeline de notificações
 -- Cole e rode cada bloco separadamente no SQL Editor
 -- ═══════════════════════════════════════════════════════════════════════════
 
@@ -24,7 +24,7 @@ SELECT extname, extversion FROM pg_extension WHERE extname = 'pg_net';
 
 
 -- ── BLOCO 3: Últimas chamadas HTTP feitas pelo pg_net ───────────────────
--- (mostra se urbgo_send_push chegou a disparar algum request)
+-- (mostra se arkgo_send_push chegou a disparar algum request)
 SELECT
   id,
   status_code,
@@ -35,12 +35,12 @@ ORDER BY created DESC
 LIMIT 10;
 
 
--- ── BLOCO 4: Testar urbgo_send_push diretamente com o token real ────────
+-- ── BLOCO 4: Testar arkgo_send_push diretamente com o token real ────────
 -- (substitua o token pelo valor de fcm_token da query do BLOCO 1)
-SELECT public.urbgo_send_push(
+SELECT public.arkgo_send_push(
   '<FCM_TOKEN_DO_BLOCO_1>',
   'Teste direto SQL',
-  'Se chegar aqui, urbgo_send_push está OK',
+  'Se chegar aqui, arkgo_send_push está OK',
   '{"type":"test"}'::jsonb
 );
 
@@ -57,4 +57,4 @@ LIMIT 3;
 -- ── BLOCO 5: O corpo da função tem o service_role_key real ou placeholder?
 SELECT LEFT(prosrc, 400) AS fonte_da_funcao
 FROM pg_proc
-WHERE proname = 'urbgo_send_push';
+WHERE proname = 'arkgo_send_push';

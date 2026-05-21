@@ -20,7 +20,7 @@ class AddressSuggestion {
 // ─────────────────────────────────────────────────────────────
 
 class GeocodingService {
-  static const MethodChannel _channel = MethodChannel('com.urbgo.app/geocoder');
+  static const MethodChannel _channel = MethodChannel('com.arkgo.app/geocoder');
 
   String _expandAbbreviations(String q) {
     if (q.isEmpty) return q;
