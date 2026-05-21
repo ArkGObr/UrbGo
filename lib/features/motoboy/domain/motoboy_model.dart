@@ -12,6 +12,7 @@ class MotoboyModel {
   final double? currentLng;
   final String? vehiclePlate;
   final String? cpf;
+  final String? rgNumber;
   final String? cnhNumber;
   final String? cnhCategory;
   final DateTime? cnhExpirationDate;
@@ -46,6 +47,7 @@ class MotoboyModel {
     this.currentLng,
     this.vehiclePlate,
     this.cpf,
+    this.rgNumber,
     this.cnhNumber,
     this.cnhCategory,
     this.cnhExpirationDate,
@@ -87,6 +89,7 @@ class MotoboyModel {
       currentLng: (json['current_lng'] as num?)?.toDouble(),
       vehiclePlate: json['vehicle_plate'] as String?,
       cpf: json['cpf'] as String?,
+      rgNumber: json['rg_number'] as String?,
       cnhNumber: json['cnh_number'] as String?,
       cnhCategory: json['cnh_category'] as String?,
       cnhExpirationDate: json['cnh_expiration_date'] != null
@@ -133,6 +136,7 @@ class MotoboyModel {
     double? currentLng,
     String? vehiclePlate,
     String? cpf,
+    String? rgNumber,
     String? cnhNumber,
     String? cnhCategory,
     DateTime? cnhExpirationDate,
@@ -167,6 +171,7 @@ class MotoboyModel {
       currentLng: currentLng ?? this.currentLng,
       vehiclePlate: vehiclePlate ?? this.vehiclePlate,
       cpf: cpf ?? this.cpf,
+      rgNumber: rgNumber ?? this.rgNumber,
       cnhNumber: cnhNumber ?? this.cnhNumber,
       cnhCategory: cnhCategory ?? this.cnhCategory,
       cnhExpirationDate: cnhExpirationDate ?? this.cnhExpirationDate,
@@ -211,6 +216,7 @@ class MotoboyModel {
   List<String> get missingRegistrationItems => missingDriverRegistrationItems(
     category: vehicleCategory,
     cpf: cpf ?? '',
+    rgNumber: rgNumber ?? '',
     vehiclePlate: vehiclePlate ?? '',
     vehicleModel: vehicleModel ?? '',
     vehicleYear: vehicleYear?.toString() ?? '',

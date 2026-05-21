@@ -1,4 +1,4 @@
-package com.urbgo.urbgo
+package com.arkgo.arkgo
 
 import android.app.Activity
 import android.content.Intent
@@ -16,8 +16,8 @@ import java.util.Locale
 import kotlin.concurrent.thread
 
 class MainActivity : FlutterActivity() {
-    private val geocoderChannel = "com.urbgo.app/geocoder"
-    private val documentPickerChannel = "com.urbgo.app/document_picker"
+    private val geocoderChannel = "com.arkgo.app/geocoder"
+    private val documentPickerChannel = "com.arkgo.app/document_picker"
     private val pickPdfRequestCode = 9001
     private var pendingPdfResult: MethodChannel.Result? = null
 

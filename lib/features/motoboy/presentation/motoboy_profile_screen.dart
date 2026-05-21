@@ -192,6 +192,7 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
       final missing = missingDriverRegistrationItems(
         category: motoboy.vehicleCategory,
         cpf: motoboy.cpf ?? '',
+        rgNumber: motoboy.rgNumber ?? '',
         vehiclePlate: motoboy.vehiclePlate ?? '',
         vehicleModel: motoboy.vehicleModel ?? '',
         vehicleYear: motoboy.vehicleYear?.toString() ?? '',
