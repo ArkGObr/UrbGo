@@ -25,7 +25,7 @@ class PaymentService {
         'Bearer ${Supabase.instance.client.auth.currentSession?.accessToken}',
   };
 
-  /// Cria cobrança PIX no Asaas (via Edge Function)
+  /// Cria cobrança PIX via Pagar.me (via Edge Function)
   Future<PixChargeResult> createPixCharge({
     required String motoboyId,
     required double amount,
@@ -35,7 +35,20 @@ class PaymentService {
       data: {'motoboyId': motoboyId, 'amount': amount},
       options: Options(headers: _authHeaders),
     );
-    return PixChargeResult.fromJson(response.data);
+
+    final data = response.data as Map<String, dynamic>;
+
+    if (data.containsKey('error')) {
+      throw Exception(data['error'].toString());
+    }
+
+    if (data['pixCode'] == null || (data['pixCode'] as String).isEmpty) {
+      throw Exception(
+        'Gateway não retornou o código PIX. Verifique a configuração do Pagar.me.',
+      );
+    }
+
+    return PixChargeResult.fromJson(data);
   }
 
   /// Simula recarga (apenas em dev)
