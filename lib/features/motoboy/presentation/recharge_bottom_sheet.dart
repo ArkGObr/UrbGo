@@ -145,18 +145,20 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
     if (_pixResult == null) return;
     setState(() => _isPolling = true);
 
+    final paymentService = ref.read(_paymentServiceProvider);
+
+    // Até 20 tentativas × 5 segundos = 1 minuto e 40 segundos
     for (int i = 0; i < 20; i++) {
-      await Future.delayed(const Duration(seconds: 3));
+      await Future.delayed(const Duration(seconds: 5));
       if (!mounted) return;
 
       try {
-        final data = await Supabase.instance.client
-            .from('recharges')
-            .select('gateway_status')
-            .eq('id', _pixResult!.rechargeId)
-            .single();
+        // Consulta diretamente no Pagar.me e credita saldo se confirmado
+        final result = await paymentService.checkPixStatus(
+          rechargeId: _pixResult!.rechargeId,
+        );
 
-        if (data['gateway_status'] == 'confirmed') {
+        if (result.isConfirmed) {
           ref.invalidate(motoboyStreamProvider);
           ref.invalidate(transactionsProvider);
           if (mounted) {
@@ -185,7 +187,7 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
       AppToast.show(
         context,
         title: 'Pagamento não detectado',
-        subtitle: 'Aguarde alguns instantes e tente novamente',
+        subtitle: 'Tente verificar novamente em instantes',
         type: AppToastType.warning,
         duration: const Duration(seconds: 6),
       );

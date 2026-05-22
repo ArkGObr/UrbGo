@@ -16,6 +16,22 @@ function pagarmeAuth(): string {
   return "Basic " + btoa(`${PAGARME_API_KEY}:`);
 }
 
+/** Extrai qr_code e qr_code_url de uma transação Pagar.me (aceita vários formatos) */
+function extractPixData(transaction: any): { qrCode: string; qrUrl: string } {
+  if (!transaction) return { qrCode: "", qrUrl: "" };
+  const qrCode: string =
+    transaction.qr_code ??
+    transaction.pix?.qr_code ??
+    transaction.pix_data?.qr_code ??
+    "";
+  const qrUrl: string =
+    transaction.qr_code_url ??
+    transaction.pix?.qr_code_url ??
+    transaction.pix_data?.qr_code_url ??
+    "";
+  return { qrCode, qrUrl };
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -36,7 +52,7 @@ serve(async (req: Request) => {
       );
     }
 
-    // 1. Buscar dados do motoboy (incluindo CPF — obrigatório para PIX no Brasil)
+    // 1. Buscar dados do motoboy (CPF obrigatório para PIX no Brasil)
     const { data: motoboyData, error: motoboyError } = await supabase
       .from("motoboys")
       .select("id, cpf, users(name, email)")
@@ -53,18 +69,22 @@ serve(async (req: Request) => {
     const amountInCents = Math.round(amount * 100);
     const orderCode = `ARKGO-${motoboyId.substring(0, 8)}-${Date.now()}`;
 
+    // CPF é obrigatório para emitir PIX no Brasil
+    if (cpf.length !== 11) {
+      throw new Error(
+        "Seu CPF não está cadastrado no perfil. " +
+          "Entre em contato com o suporte para atualizar seu cadastro.",
+      );
+    }
+
     // 2. Criar order PIX no Pagar.me v5
     const customerPayload: Record<string, any> = {
       name: user?.name ?? "Entregador ArkGo",
       email: user?.email ?? "entregador@arkgo.app",
       type: "individual",
+      document_type: "CPF",
+      document: cpf,
     };
-
-    // CPF é obrigatório para emitir PIX no Brasil
-    if (cpf.length === 11) {
-      customerPayload.document_type = "CPF";
-      customerPayload.document = cpf;
-    }
 
     const orderRes = await fetch(`${PAGARME_URL}/orders`, {
       method: "POST",
@@ -96,35 +116,73 @@ serve(async (req: Request) => {
     console.log("Pagar.me order response:", JSON.stringify(order));
 
     if (!order.id || !order.charges?.[0]) {
-      const detail = order.message ?? order.errors?.[0]?.message ?? JSON.stringify(order);
+      const detail =
+        order.message ?? order.errors?.[0]?.message ?? JSON.stringify(order);
       throw new Error(`Pagar.me recusou a cobrança: ${detail}`);
     }
 
     const charge = order.charges[0];
-    const transaction = charge.last_transaction;
+    console.log("charge:", JSON.stringify(charge));
+    console.log("last_transaction:", JSON.stringify(charge.last_transaction));
 
-    console.log("last_transaction:", JSON.stringify(transaction));
+    // 3. Tentar extrair QR code do last_transaction ou transactions[]
+    let pixCopyPaste = "";
+    let qrImageUrl = "";
 
-    // qr_code pode vir em lugares diferentes dependendo da versão da API
-    const pixCopyPaste: string =
-      transaction?.qr_code ??
-      transaction?.pix?.qr_code ??
-      "";
+    const fromLast = extractPixData(charge.last_transaction);
+    if (fromLast.qrCode) {
+      pixCopyPaste = fromLast.qrCode;
+      qrImageUrl = fromLast.qrUrl;
+    } else if (charge.transactions?.length > 0) {
+      // Tentar em cada transação da lista
+      for (const tx of charge.transactions) {
+        const fromTx = extractPixData(tx);
+        if (fromTx.qrCode) {
+          pixCopyPaste = fromTx.qrCode;
+          qrImageUrl = fromTx.qrUrl;
+          break;
+        }
+      }
+    }
 
-    const qrImageUrl: string =
-      transaction?.qr_code_url ??
-      transaction?.pix?.qr_code_url ??
-      "";
+    // 4. Se ainda não temos QR code, buscar a charge diretamente (Pagar.me pode
+    //    demorar alguns ms para popular last_transaction no response do order)
+    if (!pixCopyPaste && charge.id) {
+      console.log("last_transaction vazio — buscando charge diretamente:", charge.id);
+      await new Promise((r) => setTimeout(r, 1500)); // aguarda 1.5s
+      const chargeRes = await fetch(`${PAGARME_URL}/charges/${charge.id}`, {
+        headers: { "Authorization": pagarmeAuth() },
+      });
+      const chargeDetail = await chargeRes.json();
+      console.log("charge detail:", JSON.stringify(chargeDetail));
+
+      const fromDetail = extractPixData(chargeDetail.last_transaction);
+      if (fromDetail.qrCode) {
+        pixCopyPaste = fromDetail.qrCode;
+        qrImageUrl = fromDetail.qrUrl;
+      } else if (chargeDetail.transactions?.length > 0) {
+        for (const tx of chargeDetail.transactions) {
+          const fromTx = extractPixData(tx);
+          if (fromTx.qrCode) {
+            pixCopyPaste = fromTx.qrCode;
+            qrImageUrl = fromTx.qrUrl;
+            break;
+          }
+        }
+      }
+    }
 
     if (!pixCopyPaste) {
+      const txStatus = charge.last_transaction?.status ?? "desconhecido";
       throw new Error(
         `Pagar.me criou o pedido (${order.id}) mas não retornou o QR code PIX. ` +
-        `Status da transação: ${transaction?.status ?? "desconhecido"}. ` +
-        `Verifique se o PIX está ativado na sua conta Pagar.me.`,
+          `Status da transação: ${txStatus}. ` +
+          `Charge: ${charge.id}. ` +
+          `Verifique se o PIX está ativado e se a chave CNPJ está registrada na conta Pagar.me.`,
       );
     }
 
-    // 3. Buscar imagem do QR Code e converter para base64
+    // 5. Buscar imagem do QR Code e converter para base64
     let qrCodeBase64: string | null = null;
     if (qrImageUrl) {
       try {
@@ -134,13 +192,15 @@ serve(async (req: Request) => {
         if (qrRes.ok) {
           const buf = await qrRes.arrayBuffer();
           qrCodeBase64 = encodeBase64(new Uint8Array(buf));
+        } else {
+          console.log("QR image fetch failed, status:", qrRes.status);
         }
       } catch (_) {
-        // Fallback: app usará somente o copia-e-cola
+        // Fallback: app usa somente o copia-e-cola
       }
     }
 
-    // 4. Salvar recarga pendente no banco
+    // 6. Salvar recarga pendente no banco
     const { data: recharge, error: insertError } = await supabase
       .from("recharges")
       .insert({

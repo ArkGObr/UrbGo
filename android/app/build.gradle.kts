@@ -39,7 +39,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.arkgo.arkgo"
+        applicationId = "com.urbgo.urbgo"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
