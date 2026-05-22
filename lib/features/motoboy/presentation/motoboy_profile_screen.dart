@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/cep_service.dart';
 import '../../../core/services/document_picker_service.dart';
 import '../../shared/widgets/primary_button.dart';
 import '../domain/driver_registration_rules.dart';
@@ -32,6 +34,7 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
   final _addressLabelController = TextEditingController();
 
   bool _isLoading = false;
+  bool _loadingCep = false;
   File? _selectedImage;
   String? _currentAvatarUrl;
   File? _crlvFile;
@@ -41,9 +44,12 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
   String? _currentIdentityUrl;
   String? _currentSelfieUrl;
 
+  Timer? _cepDebounce;
+
   @override
   void initState() {
     super.initState();
+    _addressZipCodeController.addListener(_onCepChanged);
     // Inicia ouvindo a description e foto se já tiver
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final m = ref.read(motoboyStreamProvider).valueOrNull;
@@ -65,12 +71,34 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
 
   @override
   void dispose() {
+    _cepDebounce?.cancel();
     _descriptionController.dispose();
     _addressZipCodeController.dispose();
     _addressNumberController.dispose();
     _addressComplementController.dispose();
     _addressLabelController.dispose();
     super.dispose();
+  }
+
+  void _onCepChanged() {
+    final digits = _addressZipCodeController.text.replaceAll(RegExp(r'\D'), '');
+    // Só busca se o usuário DIGITOU (não se foi preenchido programaticamente ao carregar)
+    if (digits.length != 8) return;
+
+    // Não rebusca se o label já está preenchido com o mesmo CEP
+    _cepDebounce?.cancel();
+    _cepDebounce = Timer(const Duration(milliseconds: 600), () async {
+      if (!mounted) return;
+      setState(() => _loadingCep = true);
+      final result = await CepService.lookup(digits);
+      if (!mounted) return;
+      setState(() {
+        _loadingCep = false;
+        if (result != null && _addressLabelController.text.trim().isEmpty) {
+          _addressLabelController.text = result.label;
+        }
+      });
+    });
   }
 
   Future<void> _pickImage() async {
@@ -88,26 +116,74 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
   }
 
   Future<void> _pickDocumentImage(int docType) async {
+    // CRLV é sempre PDF
     if (docType == 2) {
       final file = await DocumentPickerService().pickPdf();
       if (file != null) setState(() => _crlvFile = file);
       return;
     }
 
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 70,
+    // Selfie: câmera frontal direta
+    if (docType == 4) {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.camera,
+        preferredCameraDevice: CameraDevice.front,
+        imageQuality: 85,
+      );
+      if (picked != null) setState(() => _selfieImage = File(picked.path));
+      return;
+    }
+
+    // Documento de identidade: câmera ou galeria
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.surfaceBorder,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(
+                Icons.photo_camera_outlined,
+                color: AppColors.primary,
+              ),
+              title: const Text('Tirar foto'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.photo_library_outlined,
+                color: AppColors.primary,
+              ),
+              title: const Text('Escolher da galeria'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
     );
 
-    if (picked != null) {
-      setState(() {
-        if (docType == 3)
-          _identityImage = File(picked.path);
-        else if (docType == 4)
-          _selfieImage = File(picked.path);
-      });
-    }
+    if (source == null) return;
+
+    final picked = await ImagePicker().pickImage(
+      source: source,
+      imageQuality: 80,
+    );
+    if (picked != null) setState(() => _identityImage = File(picked.path));
   }
 
   Future<void> _saveProfile() async {
@@ -498,9 +574,22 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
                           FilteringTextInputFormatter.digitsOnly,
                           LengthLimitingTextInputFormatter(8),
                         ],
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'CEP',
-                          prefixIcon: Icon(Icons.pin_drop_outlined),
+                          hintText: '00000000',
+                          prefixIcon: _loadingCep
+                              ? const Padding(
+                                  padding: EdgeInsets.all(12),
+                                  child: SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: AppColors.primary,
+                                    ),
+                                  ),
+                                )
+                              : const Icon(Icons.pin_drop_outlined),
                         ),
                         validator: (value) {
                           final digits =
@@ -513,7 +602,8 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
                       TextFormField(
                         controller: _addressLabelController,
                         decoration: const InputDecoration(
-                          labelText: 'Endereço base',
+                          labelText: 'Endereço (preenchido pelo CEP)',
+                          hintText: 'Digite o CEP acima para preencher',
                           prefixIcon: Icon(Icons.map_outlined),
                         ),
                         validator: (value) {
@@ -563,13 +653,15 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
                         ),
                       ),
                       const SizedBox(height: AppSpacing.md),
-                      _buildDocumentItem(
-                        title: 'Documento de Identidade (Frente e Verso)',
-                        file: _identityImage,
-                        currentUrl: _currentIdentityUrl,
-                        onTap: () => _pickDocumentImage(3),
-                      ),
-                      const SizedBox(height: AppSpacing.md),
+                      if (driverCategoryNeedsRg(motoboy.vehicleCategory)) ...[
+                        _buildDocumentItem(
+                          title: 'Foto do RG (Frente e Verso)',
+                          file: _identityImage,
+                          currentUrl: _currentIdentityUrl,
+                          onTap: () => _pickDocumentImage(3),
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+                      ],
                       _buildDocumentItem(
                         title: 'Selfie para Reconhecimento Facial',
                         file: _selfieImage,

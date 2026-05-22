@@ -10,10 +10,9 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/constants/vehicle_categories.dart';
+import '../../../core/services/cep_service.dart';
 import '../../../core/services/document_picker_service.dart';
-import '../../../core/services/geocoding_service.dart';
 import '../../../core/utils/validators.dart';
-import '../../client/domain/client_providers.dart';
 import '../../motoboy/domain/driver_registration_rules.dart';
 import '../../shared/widgets/category_selector.dart';
 import '../../shared/widgets/primary_button.dart';
@@ -58,22 +57,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   File? _selfieWithDocumentFile;
   File? _vehicleDocumentFile;
   File? _additionalPermitFile;
-  List<AddressSuggestion> _addressSuggestions = [];
-  bool _loadingAddressSuggestions = false;
+  bool _loadingAddress = false;
   Timer? _addressDebounce;
-  bool _settingAddressZip = false;
 
   @override
   void initState() {
     super.initState();
     _addressZipCtrl.addListener(_onAddressZipChanged);
-    _addressZipFocus.addListener(() {
-      if (!_addressZipFocus.hasFocus) {
-        Future.delayed(const Duration(milliseconds: 150), () {
-          if (mounted) setState(() => _addressSuggestions = []);
-        });
-      }
-    });
   }
 
   @override
@@ -279,51 +269,32 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   }
 
   void _onAddressZipChanged() {
-    if (_settingAddressZip) return;
-
-    _addressLabelCtrl.clear();
-
     final zipDigits = _addressZipCtrl.text.replaceAll(RegExp(r'\D'), '');
     if (zipDigits.length < 8) {
       _addressDebounce?.cancel();
-      setState(() {
-        _addressSuggestions = [];
-        _loadingAddressSuggestions = false;
-      });
+      if (_addressLabelCtrl.text.isNotEmpty) {
+        setState(() => _addressLabelCtrl.clear());
+      }
       return;
     }
 
     _addressDebounce?.cancel();
-    setState(() => _loadingAddressSuggestions = true);
-    _addressDebounce = Timer(const Duration(milliseconds: 350), () async {
+    setState(() => _loadingAddress = true);
+    _addressDebounce = Timer(const Duration(milliseconds: 500), () async {
       if (!mounted) return;
-      final suggestions = await ref
-          .read(geocodingServiceProvider)
-          .autocomplete(zipDigits);
+      final result = await CepService.lookup(zipDigits);
       if (!mounted) return;
       if (_addressZipCtrl.text.replaceAll(RegExp(r'\D'), '') == zipDigits) {
         setState(() {
-          _addressSuggestions = suggestions;
-          _loadingAddressSuggestions = false;
+          _loadingAddress = false;
+          if (result != null) {
+            _addressLabelCtrl.text = result.label;
+            _addressZipFocus.unfocus();
+          } else {
+            _addressLabelCtrl.clear();
+          }
         });
       }
-    });
-  }
-
-  void _selectAddress(AddressSuggestion suggestion) {
-    _settingAddressZip = true;
-    final zipDigits = _addressZipCtrl.text.replaceAll(RegExp(r'\D'), '');
-    final formattedZip = _CepMaskFormatter.format(zipDigits);
-    _addressZipCtrl.value = TextEditingValue(
-      text: formattedZip,
-      selection: TextSelection.collapsed(offset: formattedZip.length),
-    );
-    _settingAddressZip = false;
-    _addressLabelCtrl.text = suggestion.label;
-    _addressZipFocus.unfocus();
-    setState(() {
-      _addressSuggestions = [];
-      _loadingAddressSuggestions = false;
     });
   }
 
@@ -1000,52 +971,69 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             decoration: InputDecoration(
               labelText: 'CEP',
               hintText: '00000-000',
-              prefixIcon: Icon(
-                _loadingAddressSuggestions
-                    ? Icons.hourglass_top_rounded
-                    : Icons.location_searching_rounded,
-                color: AppColors.textTertiary,
-                size: 20,
-              ),
+              prefixIcon: _loadingAddress
+                  ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    )
+                  : const Icon(
+                      Icons.location_searching_rounded,
+                      color: AppColors.textTertiary,
+                      size: 20,
+                    ),
+              suffixIcon: _addressLabelCtrl.text.trim().isNotEmpty
+                  ? const Icon(
+                      Icons.check_circle_rounded,
+                      color: AppColors.primary,
+                      size: 20,
+                    )
+                  : null,
             ),
             validator: (v) {
               final digits = v?.replaceAll(RegExp(r'\D'), '') ?? '';
               if (digits.length != 8) return 'CEP inválido';
               if (_addressLabelCtrl.text.trim().isEmpty) {
-                return 'Selecione um endereço válido para o CEP';
+                return 'CEP não encontrado. Verifique e tente novamente';
               }
               return null;
             },
           ),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 200),
-            child: _addressSuggestions.isNotEmpty
-                ? Padding(
-                    padding: const EdgeInsets.only(top: AppSpacing.sm),
-                    child: _SuggestionsCard(
-                      key: ValueKey(_addressSuggestions.length),
-                      suggestions: _addressSuggestions,
-                      onTap: _selectAddress,
-                    ),
-                  )
-                : const SizedBox.shrink(),
-          ),
           if (_addressLabelCtrl.text.trim().isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.md),
-            InputDecorator(
-              decoration: const InputDecoration(
-                labelText: 'Endereço encontrado',
-                prefixIcon: Icon(
-                  Icons.map_outlined,
-                  color: AppColors.textTertiary,
-                  size: 20,
+            const SizedBox(height: AppSpacing.sm),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(AppSpacing.md),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+                border: Border.all(
+                  color: AppColors.primary.withValues(alpha: 0.3),
                 ),
               ),
-              child: Text(
-                _addressLabelCtrl.text.trim(),
-                style: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.textPrimary,
-                ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.location_on_rounded,
+                    color: AppColors.primary,
+                    size: 16,
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Text(
+                      _addressLabelCtrl.text.trim(),
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -1109,13 +1097,15 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           hasAdditionalPermit: _additionalPermitFile != null,
         ),
         const SizedBox(height: AppSpacing.lg),
-        _DocumentUploadTile(
-          label: 'Documento de identificação',
-          subtitle: 'RG ou documento oficial com foto',
-          file: _identityDocumentFile,
-          onTap: () => _pickDocument((file) => _identityDocumentFile = file),
-        ),
-        const SizedBox(height: AppSpacing.md),
+        if (driverCategoryNeedsRg(_selectedCategory!.category)) ...[
+          _DocumentUploadTile(
+            label: 'Foto do documento de identificação',
+            subtitle: 'RG com foto (frente e verso)',
+            file: _identityDocumentFile,
+            onTap: () => _pickDocument((file) => _identityDocumentFile = file),
+          ),
+          const SizedBox(height: AppSpacing.md),
+        ],
         _DocumentUploadTile(
           label: 'Selfie para reconhecimento facial',
           subtitle: 'A câmera frontal será aberta automaticamente',
@@ -1225,7 +1215,8 @@ class _DocumentsChecklistCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = <({String label, bool done})>[
-      (label: 'Documento de identificação', done: hasIdentityDocument),
+      if (driverCategoryNeedsRg(category))
+        (label: 'Foto do documento de identificação', done: hasIdentityDocument),
       (label: 'Selfie para reconhecimento facial', done: hasSelfieWithDocument),
       if (driverCategoryNeedsVehicleDocument(category))
         (label: 'Documento do veículo em PDF', done: hasVehicleDocument),
@@ -1360,59 +1351,6 @@ class _DocumentUploadTile extends StatelessWidget {
   }
 }
 
-class _SuggestionsCard extends StatelessWidget {
-  final List<AddressSuggestion> suggestions;
-  final void Function(AddressSuggestion) onTap;
-
-  const _SuggestionsCard({
-    super.key,
-    required this.suggestions,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surfaceHigh,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.surfaceBorder),
-      ),
-      child: ListView.separated(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: suggestions.length,
-        separatorBuilder: (_, __) =>
-            const Divider(height: 1, color: AppColors.surfaceBorder),
-        itemBuilder: (_, index) {
-          final suggestion = suggestions[index];
-          return InkWell(
-            onTap: () => onTap(suggestion),
-            child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.location_on_outlined,
-                    color: AppColors.textTertiary,
-                    size: 18,
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: Text(
-                      suggestion.label,
-                      style: AppTypography.bodyMedium,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
 
 // ── Conta dígitos antes de [upToOffset] no texto bruto ────────
 int _digitsBeforeOffset(String text, int upToOffset) {

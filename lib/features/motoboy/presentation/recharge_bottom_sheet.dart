@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
@@ -39,6 +38,7 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
   // Dados do QR Code
   PixChargeResult? _pixResult;
   Timer? _expirationTimer;
+  Timer? _autoCheckTimer;
   int _remainingSeconds = 30 * 60; // 30 min
 
   final List<double> _presetAmounts = [20, 50, 100, 200];
@@ -47,6 +47,7 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
   void dispose() {
     _customAmountCtrl.dispose();
     _expirationTimer?.cancel();
+    _autoCheckTimer?.cancel();
     super.dispose();
   }
 
@@ -127,12 +128,46 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
           _remainingSeconds--;
           if (_remainingSeconds <= 0) {
             timer.cancel();
+            _autoCheckTimer?.cancel();
           }
         });
       } else {
         timer.cancel();
       }
     });
+
+    // Polling automático a cada 15s — não depende do botão "Já paguei"
+    _autoCheckTimer?.cancel();
+    _autoCheckTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
+      if (!mounted || _step != 1 || _isPolling) return;
+      await _checkOnce();
+    });
+  }
+
+  /// Uma única verificação sem bloquear o estado de polling manual
+  Future<void> _checkOnce() async {
+    if (_pixResult == null) return;
+    try {
+      final result = await ref
+          .read(_paymentServiceProvider)
+          .checkPixStatus(rechargeId: _pixResult!.rechargeId);
+      if (result.isConfirmed && mounted) {
+        _autoCheckTimer?.cancel();
+        ref.invalidate(motoboyStreamProvider);
+        ref.invalidate(transactionsProvider);
+        setState(() => _step = 2);
+        AppToast.show(
+          context,
+          title: 'PIX confirmado!',
+          subtitle:
+              '${CurrencyFormatter.format(_resolvedAmount)} adicionado à sua carteira',
+          type: AppToastType.success,
+          duration: const Duration(seconds: 5),
+        );
+      }
+    } catch (_) {
+      // Silencioso — próxima tentativa em 15s
+    }
   }
 
   String get _formattedTime {
@@ -141,24 +176,22 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
     return '${min.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
   }
 
+  // Botão "Já paguei" — tenta 6 vezes a cada 5s (30s no total)
   Future<void> _pollForConfirmation() async {
     if (_pixResult == null) return;
     setState(() => _isPolling = true);
 
-    final paymentService = ref.read(_paymentServiceProvider);
-
-    // Até 20 tentativas × 5 segundos = 1 minuto e 40 segundos
-    for (int i = 0; i < 20; i++) {
+    for (int i = 0; i < 6; i++) {
       await Future.delayed(const Duration(seconds: 5));
       if (!mounted) return;
 
       try {
-        // Consulta diretamente no Pagar.me e credita saldo se confirmado
-        final result = await paymentService.checkPixStatus(
-          rechargeId: _pixResult!.rechargeId,
-        );
+        final result = await ref
+            .read(_paymentServiceProvider)
+            .checkPixStatus(rechargeId: _pixResult!.rechargeId);
 
         if (result.isConfirmed) {
+          _autoCheckTimer?.cancel();
           ref.invalidate(motoboyStreamProvider);
           ref.invalidate(transactionsProvider);
           if (mounted) {
@@ -178,7 +211,7 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
           return;
         }
       } catch (_) {
-        // Continua polling
+        // Continua tentando
       }
     }
 
@@ -186,10 +219,10 @@ class _RechargeBottomSheetState extends ConsumerState<RechargeBottomSheet> {
       setState(() => _isPolling = false);
       AppToast.show(
         context,
-        title: 'Pagamento não detectado',
-        subtitle: 'Tente verificar novamente em instantes',
+        title: 'Pagamento não detectado ainda',
+        subtitle: 'Aguarde — verificamos automaticamente a cada 15 segundos',
         type: AppToastType.warning,
-        duration: const Duration(seconds: 6),
+        duration: const Duration(seconds: 5),
       );
     }
   }

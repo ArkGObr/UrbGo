@@ -34,7 +34,7 @@ serve(async (req: Request) => {
     // 1. Buscar recarga no banco
     const { data: recharge, error } = await supabase
       .from("recharges")
-      .select("*")
+      .select("id, gateway_id, gateway_status, motoboy_id, amount")
       .eq("id", rechargeId)
       .single();
 
@@ -42,7 +42,7 @@ serve(async (req: Request) => {
       throw new Error("Recarga não encontrada");
     }
 
-    // Já confirmada no banco — retorna direto
+    // Já confirmada — retorna sem consultar Pagar.me
     if (recharge.gateway_status === "confirmed") {
       return new Response(
         JSON.stringify({ status: "confirmed", newBalance: null }),
@@ -56,43 +56,41 @@ serve(async (req: Request) => {
       { headers: { "Authorization": pagarmeAuth() } },
     );
     const charge = await chargeRes.json();
-
     console.log("Pagar.me charge status:", charge.status);
 
-    const isPaid = charge.status === "paid";
-
-    if (!isPaid) {
+    if (charge.status !== "paid") {
       return new Response(
-        JSON.stringify({ status: recharge.gateway_status }),
+        JSON.stringify({ status: "pending" }),
         { headers: { "Content-Type": "application/json", ...corsHeaders } },
       );
     }
 
-    // 3. Pagamento confirmado no Pagar.me — processar crédito
-    await supabase
-      .from("recharges")
-      .update({
-        gateway_status: "confirmed",
-        confirmed_at: new Date().toISOString(),
-      })
-      .eq("id", rechargeId);
+    // 3. Creditar saldo atomicamente (evita duplo crédito com webhook)
+    const { data: creditRows, error: creditError } = await supabase.rpc(
+      "credit_wallet_if_pending",
+      {
+        p_recharge_id: recharge.id,
+        p_motoboy_id: recharge.motoboy_id,
+        p_amount: recharge.amount,
+      },
+    );
 
-    const { data: motoboy } = await supabase
-      .from("motoboys")
-      .select("wallet_balance")
-      .eq("id", recharge.motoboy_id)
-      .single();
+    if (creditError) throw creditError;
 
-    const newBalance = (motoboy as any).wallet_balance + recharge.amount;
+    const result = creditRows?.[0];
 
-    await supabase
-      .from("motoboys")
-      .update({
-        wallet_balance: newBalance,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", recharge.motoboy_id);
+    if (!result?.credited) {
+      // Webhook já processou — confirma para o app sem creditar novamente
+      console.log("Recarga já creditada pelo webhook:", rechargeId);
+      return new Response(
+        JSON.stringify({ status: "confirmed", newBalance: null }),
+        { headers: { "Content-Type": "application/json", ...corsHeaders } },
+      );
+    }
 
+    const newBalance: number = result.new_balance;
+
+    // 4. Registrar transação
     await supabase.from("transactions").insert({
       motoboy_id: recharge.motoboy_id,
       type: "recharge",
@@ -100,6 +98,8 @@ serve(async (req: Request) => {
       balance_after: newBalance,
       description: `Recarga PIX confirmada — R$${recharge.amount.toFixed(2)}`,
     });
+
+    console.log(`Recarga creditada via polling: R$${recharge.amount} → saldo R$${newBalance}`);
 
     return new Response(
       JSON.stringify({ status: "confirmed", newBalance }),

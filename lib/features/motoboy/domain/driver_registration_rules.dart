@@ -104,8 +104,8 @@ List<String> missingDriverRegistrationItems({
     missing.add('número do RG');
   }
 
-  if (!hasIdentityDocument) {
-    missing.add('documento de identificação');
+  if (driverCategoryNeedsRg(category) && !hasIdentityDocument) {
+    missing.add('foto do documento de identificação');
   }
 
   if (!hasSelfieWithDocument) {

@@ -186,7 +186,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     children: [
                       Text('Entrar na conta', style: AppTypography.display2),
                       const SizedBox(height: AppSpacing.sm),
-                      Text('Sua entrega em movimento', style: AppTypography.bodyLarge),
+                      Text('Você em movimento', style: AppTypography.bodyLarge),
                     ],
                   ),
                 ),
