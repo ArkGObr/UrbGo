@@ -1,8 +1,8 @@
 {
   "project_info": {
     "project_number": "406648449557",
-    "project_id": "arkgo-delivery",
-    "storage_bucket": "arkgo-delivery.firebasestorage.app"
+    "project_id": "urbgo-delivery",
+    "storage_bucket": "urbgo-delivery.firebasestorage.app"
   },
   "client": [
     {
