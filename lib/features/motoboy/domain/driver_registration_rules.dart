@@ -36,7 +36,7 @@ extension MotoboyApprovalStatusX on MotoboyApprovalStatus {
   static MotoboyApprovalStatus fromId(String? value) {
     return MotoboyApprovalStatus.values.firstWhere(
       (status) => status.id == value,
-      orElse: () => MotoboyApprovalStatus.pendingDocuments,
+      orElse: () => MotoboyApprovalStatus.pendingReview,
     );
   }
 }

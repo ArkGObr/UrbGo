@@ -57,6 +57,11 @@ class AuthRepository {
         if (cnhCategory != null) 'cnh_category': cnhCategory,
         if (cnhExpirationDate != null)
           'cnh_expiration_date': cnhExpirationDate.toIso8601String(),
+        // Endereço incluído no metadata para o trigger salvar antes da confirmação
+        if (addressZipCode != null) 'address_zip_code': addressZipCode,
+        if (addressNumber != null) 'address_number': addressNumber,
+        if (addressComplement != null) 'address_complement': addressComplement,
+        if (addressLabel != null) 'address_label': addressLabel,
       },
     );
 

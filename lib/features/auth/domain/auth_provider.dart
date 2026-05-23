@@ -17,16 +17,16 @@ class AuthNotifier extends AsyncNotifier<UserModel?> {
     Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
       if (data.event == AuthChangeEvent.signedOut) {
         state = const AsyncValue.data(null);
-      } else if (data.event == AuthChangeEvent.signedIn) {
+      } else if (data.event == AuthChangeEvent.signedIn ||
+          data.event == AuthChangeEvent.tokenRefreshed ||
+          data.event == AuthChangeEvent.userUpdated) {
         final user = await ref.read(authRepositoryProvider).getSessionUser();
         state = AsyncValue.data(user);
         if (user != null) _initNotifications(user.id);
       }
     });
 
-    final delay = Future.delayed(const Duration(seconds: 2));
     final user = await ref.read(authRepositoryProvider).getSessionUser();
-    await delay;
 
     // Inicializa FCM e salva token para o usuário logado
     if (user != null) {

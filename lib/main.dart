@@ -1,3 +1,4 @@
+import 'package:app_links/app_links.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
@@ -11,23 +12,39 @@ import 'core/services/notification_service.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Variáveis de ambiente
   await dotenv.load();
 
-  // Firebase — deve ser inicializado antes do handler de background
   await Firebase.initializeApp();
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-  // Supabase
   await Supabase.initialize(
     url: SupabaseConfig.url,
     anonKey: SupabaseConfig.anonKey,
   );
 
-  // Tratamento de erros não capturados
+  // Supabase Flutter v2 não processa deep links automaticamente.
+  // Este handler troca o token quando o app abre via link de confirmação de email.
+  _handleDeepLinks();
+
   FlutterError.onError = (details) {
     debugPrint('[Flutter Error]: ${details.exceptionAsString()}');
   };
 
   runApp(const ProviderScope(child: ArkGoApp()));
+}
+
+void _handleDeepLinks() {
+  final appLinks = AppLinks();
+
+  // App aberto do zero via link (estado encerrado)
+  appLinks.getInitialLink().then((uri) {
+    if (uri != null) {
+      Supabase.instance.client.auth.getSessionFromUrl(uri).catchError((_) {});
+    }
+  });
+
+  // App em foreground/background recebe o link
+  appLinks.uriLinkStream.listen((uri) {
+    Supabase.instance.client.auth.getSessionFromUrl(uri).catchError((_) {});
+  });
 }

@@ -1245,7 +1245,8 @@ class _ApprovalStatusCard extends StatelessWidget {
               color: AppColors.textSecondary,
             ),
           ),
-          if (motoboy.missingRegistrationItems.isNotEmpty) ...[
+          if (motoboy.approvalStatus == MotoboyApprovalStatus.pendingDocuments &&
+              motoboy.missingRegistrationItems.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.sm),
             Text(
               'Pendências: ${motoboy.missingRegistrationItems.join(', ')}',

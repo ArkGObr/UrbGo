@@ -16,6 +16,21 @@ function pagarmeAuth(): string {
   return "Basic " + btoa(`${PAGARME_API_KEY}:`);
 }
 
+/** Formata telefone brasileiro para o formato exigido pelo Pagar.me */
+function parsePhone(raw: string): { country_code: string; area_code: string; number: string } | null {
+  const digits = raw.replace(/\D/g, "");
+  // Remove DDI 55 se presente
+  const local = digits.startsWith("55") && digits.length >= 12
+    ? digits.slice(2)
+    : digits;
+  if (local.length < 10) return null;
+  return {
+    country_code: "55",
+    area_code: local.slice(0, 2),
+    number: local.slice(2),
+  };
+}
+
 /** Extrai qr_code e qr_code_url de uma transação Pagar.me (aceita vários formatos) */
 function extractPixData(transaction: any): { qrCode: string; qrUrl: string } {
   if (!transaction) return { qrCode: "", qrUrl: "" };
@@ -52,10 +67,10 @@ serve(async (req: Request) => {
       );
     }
 
-    // 1. Buscar dados do motoboy (CPF obrigatório para PIX no Brasil)
+    // 1. Buscar dados do motoboy (CPF e telefone obrigatórios para PIX)
     const { data: motoboyData, error: motoboyError } = await supabase
       .from("motoboys")
-      .select("id, cpf, users(name, email)")
+      .select("id, cpf, users(name, email, phone)")
       .eq("id", motoboyId)
       .single();
 
@@ -78,12 +93,20 @@ serve(async (req: Request) => {
     }
 
     // 2. Criar order PIX no Pagar.me v5
+    const phone = parsePhone(user?.phone ?? "");
     const customerPayload: Record<string, any> = {
       name: user?.name ?? "Entregador ArkGo",
       email: user?.email ?? "entregador@arkgo.app",
       type: "individual",
       document_type: "CPF",
       document: cpf,
+      phones: {
+        mobile_phone: phone ?? {
+          country_code: "55",
+          area_code: "11",
+          number: "999999999",
+        },
+      },
     };
 
     const orderRes = await fetch(`${PAGARME_URL}/orders`, {
