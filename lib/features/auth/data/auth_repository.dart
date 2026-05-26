@@ -86,6 +86,7 @@ class AuthRepository {
         cnhNumber: cnhNumber,
         cnhCategory: cnhCategory,
         cnhExpirationDate: cnhExpirationDate,
+        ownerName: name,
         addressZipCode: addressZipCode,
         addressNumber: addressNumber,
         addressComplement: addressComplement,
@@ -137,7 +138,8 @@ class AuthRepository {
           'name': name,
           'phone': phone,
           'role': role,
-          'status': 'active',
+          'status': role == 'motoboy' ? 'pending' : 'active',
+          'is_released': role == 'motoboy' ? false : true,
           if (clientType != null) 'client_type': clientType,
           if (document != null) 'document': document,
         });
@@ -174,6 +176,7 @@ class AuthRepository {
   Future<void> _saveMotoboyRegistration({
     required String userId,
     required VehicleCategory category,
+    required String ownerName,
     String? cpf,
     String? rgNumber,
     String? vehiclePlate,
@@ -195,27 +198,32 @@ class AuthRepository {
   }) async {
     final identityDocumentUrl = await _uploadDriverDocument(
       userId: userId,
-      folder: 'identity',
+      ownerName: ownerName,
+      documentType: 'rg',
       file: identityDocumentFile,
     );
     final selfieWithDocumentUrl = await _uploadDriverDocument(
       userId: userId,
-      folder: 'selfie',
+      ownerName: ownerName,
+      documentType: 'selfie_with_document',
       file: selfieWithDocumentFile,
     );
     final cnhPhotoUrl = await _uploadDriverDocument(
       userId: userId,
-      folder: 'cnh',
+      ownerName: ownerName,
+      documentType: 'cnh',
       file: cnhPhotoFile,
     );
     final vehicleDocumentUrl = await _uploadDriverDocument(
       userId: userId,
-      folder: 'vehicle-document',
+      ownerName: ownerName,
+      documentType: 'crlv',
       file: vehicleDocumentFile,
     );
     final additionalPermitUrl = await _uploadDriverDocument(
       userId: userId,
-      folder: 'additional-permit',
+      ownerName: ownerName,
+      documentType: 'additional_permit',
       file: additionalPermitFile,
     );
 
@@ -283,20 +291,49 @@ class AuthRepository {
 
   Future<String?> _uploadDriverDocument({
     required String userId,
-    required String folder,
+    required String ownerName,
+    required String documentType,
     required File? file,
   }) async {
     if (file == null) return null;
 
     final ext = file.path.contains('.') ? file.path.split('.').last : 'jpg';
+    final mimeType = _mimeTypeForExtension(ext);
     final path =
-        '$userId/$folder/${DateTime.now().millisecondsSinceEpoch}.$ext';
+        '$userId/${documentType}_${DateTime.now().millisecondsSinceEpoch}.$ext';
 
     await _db.storage
         .from('driver-documents')
-        .upload(path, file, fileOptions: const FileOptions(upsert: true));
+        .upload(
+          path,
+          file,
+          fileOptions: FileOptions(
+            upsert: true,
+            contentType: mimeType,
+            metadata: {
+              'owner_name': ownerName,
+              'document_type': documentType,
+              'mime_type': mimeType,
+            },
+          ),
+        );
 
     return path;
+  }
+
+  String _mimeTypeForExtension(String ext) {
+    switch (ext.toLowerCase()) {
+      case 'png':
+        return 'image/png';
+      case 'pdf':
+        return 'application/pdf';
+      case 'heic':
+        return 'image/heic';
+      case 'webp':
+        return 'image/webp';
+      default:
+        return 'image/jpeg';
+    }
   }
 
   Future<UserModel> _fetchUser(String id) async {

@@ -1207,11 +1207,13 @@ class _ApprovalStatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = switch (motoboy.approvalStatus) {
-      MotoboyApprovalStatus.rejected => AppColors.error,
-      MotoboyApprovalStatus.pendingReview => AppColors.warning,
-      _ => AppColors.primary,
-    };
+    final accent = motoboy.canGoOnline
+        ? AppColors.primary
+        : switch (motoboy.approvalStatus) {
+            MotoboyApprovalStatus.rejected => AppColors.error,
+            MotoboyApprovalStatus.pendingReview => AppColors.warning,
+            _ => AppColors.primary,
+          };
 
     return Container(
       width: double.infinity,
@@ -1230,7 +1232,7 @@ class _ApprovalStatusCard extends StatelessWidget {
               const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: Text(
-                  motoboy.approvalStatus.label,
+                  motoboy.accessStatusLabel,
                   style: AppTypography.labelLarge.copyWith(color: accent),
                 ),
               ),
@@ -1240,12 +1242,14 @@ class _ApprovalStatusCard extends StatelessWidget {
           Text(
             motoboy.rejectionReason?.trim().isNotEmpty == true
                 ? motoboy.rejectionReason!
-                : motoboy.approvalStatus.summary,
+                : motoboy.accessStatusSummary,
             style: AppTypography.bodySmall.copyWith(
               color: AppColors.textSecondary,
             ),
           ),
-          if (motoboy.approvalStatus == MotoboyApprovalStatus.pendingDocuments &&
+          if (!motoboy.canGoOnline &&
+              motoboy.approvalStatus ==
+                  MotoboyApprovalStatus.pendingDocuments &&
               motoboy.missingRegistrationItems.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.sm),
             Text(
@@ -1255,7 +1259,9 @@ class _ApprovalStatusCard extends StatelessWidget {
               ),
             ),
           ],
-          if (motoboy.approvalStatus == MotoboyApprovalStatus.pendingDocuments) ...[
+          if (!motoboy.canGoOnline &&
+              motoboy.approvalStatus ==
+                  MotoboyApprovalStatus.pendingDocuments) ...[
             const SizedBox(height: AppSpacing.md),
             SizedBox(
               width: double.infinity,
@@ -1275,14 +1281,18 @@ class _ApprovalStatusCard extends StatelessWidget {
                 ),
               ),
             ),
-          ] else if (motoboy.approvalStatus == MotoboyApprovalStatus.pendingReview) ...[
+          ] else if (!motoboy.canGoOnline &&
+              motoboy.approvalStatus ==
+                  MotoboyApprovalStatus.pendingReview) ...[
             const SizedBox(height: AppSpacing.md),
             SizedBox(
               width: double.infinity,
               child: OutlinedButton(
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.warning,
-                  side: BorderSide(color: AppColors.warning.withValues(alpha: 0.5)),
+                  side: BorderSide(
+                    color: AppColors.warning.withValues(alpha: 0.5),
+                  ),
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(AppRadius.full),

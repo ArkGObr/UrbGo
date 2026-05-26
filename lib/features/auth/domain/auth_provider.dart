@@ -126,6 +126,12 @@ class AuthNotifier extends AsyncNotifier<UserModel?> {
     await ref.read(authRepositoryProvider).resetPassword(email);
   }
 
+  Future<void> refreshSessionUser() async {
+    final user = await ref.read(authRepositoryProvider).getSessionUser();
+    state = AsyncValue.data(user);
+    if (user != null) _initNotifications(user.id);
+  }
+
   Future<void> signOut() async {
     final userId = state.valueOrNull?.id;
     await ref.read(authRepositoryProvider).signOut();

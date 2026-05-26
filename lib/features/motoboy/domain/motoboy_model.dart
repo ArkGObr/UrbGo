@@ -6,6 +6,8 @@ class MotoboyModel {
   final String id;
   final String name;
   final String phone;
+  final String userStatus;
+  final bool isReleased;
   final double walletBalance;
   final bool isOnline;
   final double? currentLat;
@@ -41,6 +43,8 @@ class MotoboyModel {
     required this.id,
     required this.name,
     required this.phone,
+    this.userStatus = 'pending',
+    this.isReleased = false,
     required this.walletBalance,
     required this.isOnline,
     this.currentLat,
@@ -83,6 +87,8 @@ class MotoboyModel {
       id: json['id'] as String,
       name: users?['name'] as String? ?? '',
       phone: users?['phone'] as String? ?? '',
+      userStatus: users?['status'] as String? ?? 'pending',
+      isReleased: users?['is_released'] as bool? ?? false,
       walletBalance: (json['wallet_balance'] as num).toDouble(),
       isOnline: json['is_online'] as bool? ?? false,
       currentLat: (json['current_lat'] as num?)?.toDouble(),
@@ -130,6 +136,8 @@ class MotoboyModel {
     String? id,
     String? name,
     String? phone,
+    String? userStatus,
+    bool? isReleased,
     double? walletBalance,
     bool? isOnline,
     double? currentLat,
@@ -165,6 +173,8 @@ class MotoboyModel {
       id: id ?? this.id,
       name: name ?? this.name,
       phone: phone ?? this.phone,
+      userStatus: userStatus ?? this.userStatus,
+      isReleased: isReleased ?? this.isReleased,
       walletBalance: walletBalance ?? this.walletBalance,
       isOnline: isOnline ?? this.isOnline,
       currentLat: currentLat ?? this.currentLat,
@@ -211,7 +221,33 @@ class MotoboyModel {
 
   bool get isApproved => approvalStatus == MotoboyApprovalStatus.approved;
 
-  bool get canGoOnline => isApproved;
+  bool get canGoOnline => isReleased && userStatus == 'active';
+
+  String get accessStatusLabel {
+    if (canGoOnline) return 'Liberado para operar';
+    return switch (approvalStatus) {
+      MotoboyApprovalStatus.pendingDocuments => 'Cadastro incompleto',
+      MotoboyApprovalStatus.pendingReview => 'Aguardando aprovação',
+      MotoboyApprovalStatus.rejected => 'Cadastro reprovado',
+      MotoboyApprovalStatus.approved => 'Aguardando liberação',
+    };
+  }
+
+  String get accessStatusSummary {
+    if (canGoOnline) {
+      return 'Seus documentos foram validados e sua conta está ativa.';
+    }
+    return switch (approvalStatus) {
+      MotoboyApprovalStatus.pendingDocuments =>
+        'Envie todos os documentos obrigatórios para entrar na fila de análise.',
+      MotoboyApprovalStatus.pendingReview =>
+        'Seus documentos foram enviados e estão aguardando análise automática.',
+      MotoboyApprovalStatus.rejected =>
+        'Houve um problema na análise dos documentos. Revise e envie novamente.',
+      MotoboyApprovalStatus.approved =>
+        'Seus documentos foram aprovados e a liberação da conta está sendo sincronizada.',
+    };
+  }
 
   List<String> get missingRegistrationItems => missingDriverRegistrationItems(
     category: vehicleCategory,

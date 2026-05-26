@@ -5,6 +5,7 @@ class UserModel {
   final String? email;
   final String role; // 'client' | 'motoboy'
   final String status;
+  final bool isReleased;
   final String? avatarUrl;
   final String? description;
 
@@ -15,35 +16,40 @@ class UserModel {
     this.email,
     required this.role,
     required this.status,
+    this.isReleased = true,
     this.avatarUrl,
     this.description,
   });
 
-  bool get isClient  => role == 'client';
+  bool get isClient => role == 'client';
   bool get isMotoboy => role == 'motoboy';
+  bool get isActive => status == 'active';
+  bool get canAccessMotoboyApp => !isMotoboy || (isActive && isReleased);
 
   factory UserModel.fromJson(Map<String, dynamic> json) => UserModel(
-        id:          json['id'] as String,
-        name:        json['name'] as String,
-        phone:       json['phone'] as String? ?? '',
-        email:       json['email'] as String?,
-        role:        json['role'] as String,
-        status:      json['status'] as String? ?? 'active',
-        avatarUrl:   json['avatar_url'] as String?,
-        description: json['description'] as String?,
-      );
+    id: json['id'] as String,
+    name: json['name'] as String,
+    phone: json['phone'] as String? ?? '',
+    email: json['email'] as String?,
+    role: json['role'] as String,
+    status: json['status'] as String? ?? 'active',
+    isReleased: json['is_released'] as bool? ?? true,
+    avatarUrl: json['avatar_url'] as String?,
+    description: json['description'] as String?,
+  );
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'phone': phone,
-        'email': email,
-        'role': role,
-        'status': status,
-        if (avatarUrl != null) 'avatar_url': avatarUrl,
-        if (description != null) 'description': description,
-      };
-  
+    'id': id,
+    'name': name,
+    'phone': phone,
+    'email': email,
+    'role': role,
+    'status': status,
+    'is_released': isReleased,
+    if (avatarUrl != null) 'avatar_url': avatarUrl,
+    if (description != null) 'description': description,
+  };
+
   UserModel copyWith({
     String? id,
     String? name,
@@ -51,6 +57,7 @@ class UserModel {
     String? email,
     String? role,
     String? status,
+    bool? isReleased,
     String? avatarUrl,
     String? description,
   }) {
@@ -61,6 +68,7 @@ class UserModel {
       email: email ?? this.email,
       role: role ?? this.role,
       status: status ?? this.status,
+      isReleased: isReleased ?? this.isReleased,
       avatarUrl: avatarUrl ?? this.avatarUrl,
       description: description ?? this.description,
     );

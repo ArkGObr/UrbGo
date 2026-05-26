@@ -394,7 +394,7 @@ class _ApprovalBlockedBody extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.lg),
             Text(
-              motoboy.approvalStatus.label,
+              motoboy.accessStatusLabel,
               style: AppTypography.h3,
               textAlign: TextAlign.center,
             ),
@@ -402,11 +402,14 @@ class _ApprovalBlockedBody extends StatelessWidget {
             Text(
               reason != null && reason.isNotEmpty
                   ? reason
-                  : motoboy.approvalStatus.summary,
+                  : motoboy.accessStatusSummary,
               style: AppTypography.bodyMedium,
               textAlign: TextAlign.center,
             ),
-            if ((motoboy.missingRegistrationItems as List).isNotEmpty) ...[
+            if (!motoboy.canGoOnline &&
+                motoboy.approvalStatus ==
+                    MotoboyApprovalStatus.pendingDocuments &&
+                (motoboy.missingRegistrationItems as List).isNotEmpty) ...[
               const SizedBox(height: AppSpacing.md),
               Text(
                 'Pendências: ${motoboy.missingRegistrationItems.join(', ')}',

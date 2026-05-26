@@ -8,6 +8,7 @@ import '../features/auth/presentation/login_screen.dart';
 import '../features/auth/presentation/register_screen.dart';
 import '../features/auth/presentation/check_email_screen.dart';
 import '../features/auth/presentation/onboarding_screen.dart';
+import '../features/auth/presentation/motoboy_release_pending_screen.dart';
 import '../features/client/presentation/client_home_screen.dart';
 import '../features/client/presentation/client_history_screen.dart';
 import '../features/client/presentation/create_delivery_screen.dart';
@@ -72,6 +73,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       final onLoginRegister =
           path == '/login' || path == '/register' || path == '/check-email';
       final onOnboarding = path == '/onboarding';
+      final onReleasePending = path == '/motoboy/release-pending';
 
       if (!hasSeenOnboarding && path != '/splash' && !onOnboarding) {
         return '/onboarding';
@@ -96,7 +98,23 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // ── 5. Com sessão nas telas de auth → home correta ──────
       if (user != null && onLoginRegister) {
-        return user.isClient ? '/client/home' : '/motoboy/home';
+        return user.isClient
+            ? '/client/home'
+            : (user.canAccessMotoboyApp
+                  ? '/motoboy/home'
+                  : '/motoboy/release-pending');
+      }
+
+      if (user != null && user.isMotoboy && !user.canAccessMotoboyApp) {
+        if (onReleasePending || path == '/motoboy/profile') return null;
+        return '/motoboy/release-pending';
+      }
+
+      if (user != null &&
+          user.isMotoboy &&
+          user.canAccessMotoboyApp &&
+          onReleasePending) {
+        return '/motoboy/home';
       }
 
       return null;
@@ -204,6 +222,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       ShellRoute(
         builder: (_, __, child) => child,
         routes: [
+          GoRoute(
+            path: '/motoboy/release-pending',
+            pageBuilder: (_, state) => fadeThroughTransition(
+              key: state.pageKey,
+              child: const MotoboyReleasePendingScreen(),
+            ),
+          ),
           GoRoute(
             path: '/motoboy/home',
             pageBuilder: (_, state) => fadeThroughTransition(

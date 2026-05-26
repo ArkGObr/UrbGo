@@ -194,6 +194,10 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
     try {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) throw Exception('Não autenticado.');
+      final motoboy = ref.read(motoboyStreamProvider).valueOrNull!;
+      final ownerName = motoboy.name.trim().isEmpty
+          ? 'Motorista'
+          : motoboy.name.trim();
 
       String? avatarUrl = _currentAvatarUrl;
 
@@ -218,53 +222,37 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
 
       String? crlvUrl = _currentCrlvUrl;
       if (_crlvFile != null) {
-        final ext = _crlvFile!.path.split('.').last;
-        final path =
-            '${user.id}/crlv-${DateTime.now().millisecondsSinceEpoch}.$ext';
-        await Supabase.instance.client.storage
-            .from('driver-documents')
-            .upload(
-              path,
-              _crlvFile!,
-              fileOptions: const FileOptions(upsert: true),
-            );
-        crlvUrl = path;
+        crlvUrl = await _uploadDriverDocument(
+          userId: user.id,
+          ownerName: ownerName,
+          documentType: 'crlv',
+          file: _crlvFile!,
+        );
       }
 
       String? identityUrl = _currentIdentityUrl;
       if (_identityImage != null) {
-        final ext = _identityImage!.path.split('.').last;
-        final path =
-            '${user.id}/identity-${DateTime.now().millisecondsSinceEpoch}.$ext';
-        await Supabase.instance.client.storage
-            .from('driver-documents')
-            .upload(
-              path,
-              _identityImage!,
-              fileOptions: const FileOptions(upsert: true),
-            );
-        identityUrl = path;
+        identityUrl = await _uploadDriverDocument(
+          userId: user.id,
+          ownerName: ownerName,
+          documentType: 'rg',
+          file: _identityImage!,
+        );
       }
 
       String? selfieUrl = _currentSelfieUrl;
       if (_selfieImage != null) {
-        final ext = _selfieImage!.path.split('.').last;
-        final path =
-            '${user.id}/selfie-${DateTime.now().millisecondsSinceEpoch}.$ext';
-        await Supabase.instance.client.storage
-            .from('driver-documents')
-            .upload(
-              path,
-              _selfieImage!,
-              fileOptions: const FileOptions(upsert: true),
-            );
-        selfieUrl = path;
+        selfieUrl = await _uploadDriverDocument(
+          userId: user.id,
+          ownerName: ownerName,
+          documentType: 'selfie_with_document',
+          file: _selfieImage!,
+        );
       }
 
       final description = _descriptionController.text.trim();
 
       // Recalcular aprovação
-      final motoboy = ref.read(motoboyStreamProvider).valueOrNull!;
       final missing = missingDriverRegistrationItems(
         category: motoboy.vehicleCategory,
         cpf: motoboy.cpf ?? '',
@@ -343,6 +331,51 @@ class _MotoboyProfileScreenState extends ConsumerState<MotoboyProfileScreen> {
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<String> _uploadDriverDocument({
+    required String userId,
+    required String ownerName,
+    required String documentType,
+    required File file,
+  }) async {
+    final ext = file.path.split('.').last;
+    final mimeType = _mimeTypeForExtension(ext);
+    final path =
+        '$userId/${documentType}_${DateTime.now().millisecondsSinceEpoch}.$ext';
+
+    await Supabase.instance.client.storage
+        .from('driver-documents')
+        .upload(
+          path,
+          file,
+          fileOptions: FileOptions(
+            upsert: true,
+            contentType: mimeType,
+            metadata: {
+              'owner_name': ownerName,
+              'document_type': documentType,
+              'mime_type': mimeType,
+            },
+          ),
+        );
+
+    return path;
+  }
+
+  String _mimeTypeForExtension(String ext) {
+    switch (ext.toLowerCase()) {
+      case 'png':
+        return 'image/png';
+      case 'pdf':
+        return 'application/pdf';
+      case 'heic':
+        return 'image/heic';
+      case 'webp':
+        return 'image/webp';
+      default:
+        return 'image/jpeg';
     }
   }
 

@@ -114,10 +114,21 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
       : ['Veículo', 'Endereços', 'Detalhes', 'Confirmar'];
 
   bool get _canProceedFromDetails {
+    if (!_isBikeDistanceValid) return false;
     if (_isRide) return _safetyAcknowledged;
     final nameOk = _recipientNameCtrl.text.trim().isNotEmpty;
     final phoneOk = _recipientPhoneCtrl.text.trim().length >= 10;
     return nameOk && phoneOk;
+  }
+
+  bool get _isBikeDistanceValid {
+    final category = _selectedCategory;
+    final distanceKm = _distanceKm;
+    if (category?.category != VehicleCategory.bike) return true;
+    if (distanceKm == null) return true;
+
+    final maxDistanceKm = category?.maxDistanceKm ?? 3.0;
+    return distanceKm <= maxDistanceKm;
   }
 
   @override
@@ -637,7 +648,9 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
       }
     } else if (_step == 2) {
       if (!_canProceedFromDetails) {
-        if (_isMotoTaxi) {
+        if (!_isBikeDistanceValid) {
+          _showSnack('Bike Entregas permite no máximo 3 km.');
+        } else if (_isMotoTaxi) {
           _showSnack('Confirme as orientações de segurança para continuar');
         } else if (_isCarRide) {
           _showSnack('Confirme o uso do cinto para continuar');
@@ -732,6 +745,10 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
       final ok = await _ensureGeocoded();
       if (!ok || !mounted) return;
       if (_deliveryValue == null || _distanceKm == null) return;
+      if (!_isBikeDistanceValid) {
+        _showSnack('Bike Entregas permite no máximo 3 km.');
+        return;
+      }
 
       final user = ref.read(authNotifierProvider).valueOrNull;
       if (user == null) return;
@@ -1685,7 +1702,7 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
 
           PrimaryButton(
             label: isMotoTaxi ? 'Confirmar Corrida' : 'Confirmar Pedido',
-            onPressed: _isLoading ? null : _submit,
+            onPressed: _isLoading || !_isBikeDistanceValid ? null : _submit,
             isLoading: _isLoading,
           ),
           const SizedBox(height: AppSpacing.xl2),

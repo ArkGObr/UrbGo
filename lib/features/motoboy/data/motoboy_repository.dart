@@ -18,7 +18,7 @@ class MotoboyRepository {
   Future<MotoboyModel> fetchMotoboy(String id) async {
     final data = await _db
         .from('motoboys')
-        .select('*, users(name, phone)')
+        .select('*, users(name, phone, status, is_released)')
         .eq('id', id)
         .single();
     return MotoboyModel.fromJson(data);
@@ -30,7 +30,7 @@ class MotoboyRepository {
         .from('motoboys')
         .stream(primaryKey: ['id'])
         .eq('id', id)
-        .map((rows) => MotoboyModel.fromJson(rows.first));
+        .asyncMap((_) => fetchMotoboy(id));
   }
 
   /// Ligar/desligar online (ao ligar, registra last_active_at e reseta nível de inatividade via trigger SQL)
@@ -64,11 +64,14 @@ class MotoboyRepository {
     try {
       final m = await _db
           .from('motoboys')
-          .select('vehicle_category, approval_status')
+          .select('vehicle_category, users(status, is_released)')
           .eq('id', motoboyId)
           .single();
       category = m['vehicle_category'] as String? ?? 'motoboy';
-      isApproved = m['approval_status'] == 'approved';
+      final linkedUser = m['users'] as Map<String, dynamic>?;
+      isApproved =
+          linkedUser?['is_released'] == true &&
+          linkedUser?['status'] == 'active';
     } catch (_) {
       // Se falhar (ex: recursão RLS), segue com default
     }
