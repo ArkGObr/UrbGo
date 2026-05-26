@@ -178,7 +178,18 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
   // ─────────────────────────────────────────────────────────
 
   Future<void> _loadSurgeInfo() async {
-    final surge = await DynamicPricingService().getCurrentSurge();
+    final category = _selectedCategory;
+    if (category == null) {
+      if (mounted) {
+        setState(() => _surgeInfo = const SurgeInfo(multiplier: 1.0));
+      }
+      return;
+    }
+
+    final surge = await DynamicPricingService().getCurrentSurge(
+      vehicleCategoryKey: category.id.toUpperCase(),
+      at: _scheduledFor,
+    );
     if (mounted) {
       setState(() => _surgeInfo = surge);
       if (_pickupLatLng != null && _deliveryLatLng != null) {
@@ -702,6 +713,7 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
         time.minute,
       );
     });
+    _loadSurgeInfo();
   }
 
   // ─────────────────────────────────────────────────────────
@@ -896,7 +908,10 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
           const SizedBox(height: AppSpacing.xl2),
           CategorySelectorWidget(
             initialValue: _selectedCategory,
-            onSelected: (cat) => setState(() => _selectedCategory = cat),
+            onSelected: (cat) {
+              setState(() => _selectedCategory = cat);
+              _loadSurgeInfo();
+            },
           ),
           const SizedBox(height: AppSpacing.xl3),
           PrimaryButton(
@@ -1172,7 +1187,10 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
             _SchedulingSection(
               scheduledFor: _scheduledFor,
               onTap: _pickScheduledTime,
-              onClear: () => setState(() => _scheduledFor = null),
+              onClear: () {
+                setState(() => _scheduledFor = null);
+                _loadSurgeInfo();
+              },
             ),
             const SizedBox(height: AppSpacing.xl2),
           ],

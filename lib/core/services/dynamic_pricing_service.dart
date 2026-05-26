@@ -1,40 +1,79 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-class PeakHoursRule {
+class PricingRule {
   final String name;
-  final String? description;
-  final double multiplier;
+  final String ruleType;
+  final String days;
   final int startHour;
   final int endHour;
-  final List<int> daysOfWeek;
+  final Map<String, dynamic> multipliers;
 
-  const PeakHoursRule({
+  const PricingRule({
     required this.name,
-    this.description,
-    required this.multiplier,
+    required this.ruleType,
+    required this.days,
     required this.startHour,
     required this.endHour,
-    required this.daysOfWeek,
+    required this.multipliers,
   });
 
-  factory PeakHoursRule.fromJson(Map<String, dynamic> json) => PeakHoursRule(
-        name: json['name'] as String,
-        description: json['description'] as String?,
-        multiplier: (json['multiplier'] as num).toDouble(),
-        startHour: json['start_hour'] as int,
-        endHour: json['end_hour'] as int,
-        daysOfWeek: List<int>.from(json['days_of_week'] as List),
-      );
+  factory PricingRule.fromJson(Map<String, dynamic> json) {
+    return PricingRule(
+      name: json['name'] as String,
+      ruleType: json['rule_type'] as String,
+      days: json['days'] as String? ?? '',
+      startHour: json['start_hour'] as int? ?? 0,
+      endHour: json['end_hour'] as int? ?? 24,
+      multipliers: Map<String, dynamic>.from(
+        json['multipliers'] as Map? ?? const {},
+      ),
+    );
+  }
 
-  bool appliesTo(DateTime dt) {
-    final weekday = dt.weekday % 7; // 0=dom, 1=seg ... 6=sab
-    final hour = dt.hour;
-    if (!daysOfWeek.contains(weekday)) return false;
-    if (startHour <= endHour) {
+  bool appliesTo(DateTime rideTime) {
+    if (!_matchesDate(rideTime)) return false;
+    return _matchesHour(rideTime.hour);
+  }
+
+  bool _matchesDate(DateTime rideTime) {
+    if (ruleType == 'specific_date') {
+      final date = _formatDate(rideTime);
+      return days == date;
+    }
+
+    if (ruleType == 'weekly') {
+      final weekday = (rideTime.weekday % 7).toString();
+      return days
+          .split(',')
+          .map((day) => day.trim())
+          .where((day) => day.isNotEmpty)
+          .contains(weekday);
+    }
+
+    return false;
+  }
+
+  bool _matchesHour(int hour) {
+    if (startHour == endHour) return true;
+    if (startHour < endHour) {
       return hour >= startHour && hour < endHour;
     }
-    // Regra que cruza meia-noite (ex: 22h-02h)
     return hour >= startHour || hour < endHour;
+  }
+
+  String _formatDate(DateTime rideTime) {
+    final month = rideTime.month.toString().padLeft(2, '0');
+    final day = rideTime.day.toString().padLeft(2, '0');
+    return '${rideTime.year}-$month-$day';
+  }
+
+  double multiplierFor(String vehicleCategoryKey) {
+    final raw =
+        multipliers[vehicleCategoryKey] ??
+        multipliers[vehicleCategoryKey.toUpperCase()];
+    if (raw is num) return raw.toDouble();
+    if (raw is String) return double.tryParse(raw) ?? 0.0;
+    return 0.0;
   }
 }
 
@@ -43,11 +82,7 @@ class SurgeInfo {
   final String? ruleName;
   final String? description;
 
-  const SurgeInfo({
-    required this.multiplier,
-    this.ruleName,
-    this.description,
-  });
+  const SurgeInfo({required this.multiplier, this.ruleName, this.description});
 
   bool get isSurge => multiplier > 1.0;
   bool get isDiscount => multiplier < 1.0;
@@ -70,81 +105,59 @@ class DynamicPricingService {
   DynamicPricingService._();
   factory DynamicPricingService() => _instance;
 
-  List<PeakHoursRule> _cachedRules = [];
+  List<PricingRule> _cachedRules = const [];
   DateTime? _cacheExpiry;
 
-  Future<List<PeakHoursRule>> _fetchRules() async {
+  Future<List<PricingRule>> _fetchRules() async {
     if (_cachedRules.isNotEmpty &&
         _cacheExpiry != null &&
         DateTime.now().isBefore(_cacheExpiry!)) {
       return _cachedRules;
     }
-    try {
-      final data = await Supabase.instance.client
-          .from('peak_hours_rules')
-          .select()
-          .eq('is_active', true);
-      _cachedRules = (data as List).map((e) => PeakHoursRule.fromJson(e as Map<String, dynamic>)).toList();
-      _cacheExpiry = DateTime.now().add(const Duration(minutes: 30));
-      return _cachedRules;
-    } catch (_) {
-      // Fallback embutido se o banco estiver indisponível
-      return _defaultRules;
-    }
+
+    final data = await Supabase.instance.client
+        .from('pricing_rules')
+        .select('name, rule_type, days, start_hour, end_hour, multipliers')
+        .eq('is_active', true);
+
+    _cachedRules = (data as List)
+        .map((item) => PricingRule.fromJson(item as Map<String, dynamic>))
+        .toList();
+    _cacheExpiry = DateTime.now().add(const Duration(minutes: 30));
+    return _cachedRules;
   }
 
-  Future<SurgeInfo> getCurrentSurge([DateTime? at]) async {
-    final now = at ?? DateTime.now();
-    final rules = await _fetchRules();
+  Future<SurgeInfo> getCurrentSurge({
+    required String vehicleCategoryKey,
+    DateTime? at,
+  }) async {
+    final rideTime = at ?? DateTime.now();
+    try {
+      final rules = await _fetchRules();
 
-    // Aplica a regra de maior impacto (não soma, pega o maior multiplicador ativo)
-    PeakHoursRule? active;
-    for (final rule in rules) {
-      if (rule.appliesTo(now)) {
-        if (active == null || rule.multiplier > active.multiplier) {
-          active = rule;
+      PricingRule? activeRule;
+      double activeMultiplier = 0.0;
+
+      for (final rule in rules) {
+        if (!rule.appliesTo(rideTime)) continue;
+        final multiplier = rule.multiplierFor(vehicleCategoryKey);
+        if (multiplier > activeMultiplier) {
+          activeMultiplier = multiplier;
+          activeRule = rule;
         }
       }
+
+      if (activeRule != null && activeMultiplier > 0) {
+        return SurgeInfo(
+          multiplier: 1.0 + activeMultiplier,
+          ruleName: activeRule.name,
+          description: 'Adicional configurado no painel administrativo.',
+        );
+      }
+    } catch (_) {
+      // Mantém preço normal se a leitura remota falhar.
     }
 
-    if (active == null) return const SurgeInfo(multiplier: 1.0);
-
-    return SurgeInfo(
-      multiplier: active.multiplier,
-      ruleName: active.name,
-      description: active.description,
-    );
+    return const SurgeInfo(multiplier: 1.0);
   }
-
-  /// Regras padrão embutidas como fallback offline
-  static const List<PeakHoursRule> _defaultRules = [
-    PeakHoursRule(
-      name: 'Horário de Almoço',
-      multiplier: 1.30,
-      startHour: 11,
-      endHour: 14,
-      daysOfWeek: [1, 2, 3, 4, 5],
-    ),
-    PeakHoursRule(
-      name: 'Horário de Pico Noturno',
-      multiplier: 1.40,
-      startHour: 17,
-      endHour: 21,
-      daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
-    ),
-    PeakHoursRule(
-      name: 'Madrugada',
-      multiplier: 0.90,
-      startHour: 0,
-      endHour: 5,
-      daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
-    ),
-    PeakHoursRule(
-      name: 'Final de Semana',
-      multiplier: 1.20,
-      startHour: 9,
-      endHour: 22,
-      daysOfWeek: [0, 6],
-    ),
-  ];
 }

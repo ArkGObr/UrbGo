@@ -525,7 +525,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               const SizedBox(width: AppSpacing.md),
               Expanded(
                 child: _RoleCard(
-                  icon: Icons.two_wheeler_rounded,
+                  icon: Icons.person_rounded,
                   label: 'Sou Motorista',
                   subtitle: 'Faço corridas e entregas',
                   value: 'motoboy',
