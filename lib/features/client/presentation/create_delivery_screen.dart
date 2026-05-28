@@ -131,6 +131,13 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
     return distanceKm <= maxDistanceKm;
   }
 
+  void _onRoundTripChanged(bool value) {
+    setState(() => _roundTrip = value);
+    if (_pickupLatLng != null && _deliveryLatLng != null) {
+      unawaited(_recalculate());
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -514,18 +521,18 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
               : choices.first.id;
           final selectedRoute = choices.firstWhere((c) => c.id == selectedId);
           final multiplier = _surgeInfo?.multiplier ?? 1.0;
-          final realVal = PriceCalculator.calculate(
-            _selectedCategory!,
-            selectedRoute.route.distanceKm,
-            surgeMultiplier: multiplier,
-          );
           setState(() {
             _routeChoices = choices;
             _selectedRouteChoiceId = selectedId;
             _routePoints = selectedRoute.route.points;
             _routeResult = selectedRoute.route;
             _distanceKm = selectedRoute.route.distanceKm;
-            _deliveryValue = realVal;
+            _deliveryValue = FareCalculator.calculateFare(
+              _selectedCategory!,
+              selectedRoute.route.distanceKm,
+              surgeMultiplier: multiplier,
+              isRoundTrip: _roundTrip,
+            );
           });
           unawaited(
             _refreshTrafficAwarePricing(
@@ -544,18 +551,18 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
       final sameExtraStop = _extraStopLatLng == expectedExtraStop;
       if (_pickupLatLng == from && _deliveryLatLng == to && sameExtraStop) {
         final multiplier = _surgeInfo?.multiplier ?? 1.0;
-        final realVal = PriceCalculator.calculate(
-          _selectedCategory!,
-          result.distanceKm,
-          surgeMultiplier: multiplier,
-        );
         setState(() {
           _routeChoices = const [];
           _selectedRouteChoiceId = null;
           _routePoints = result.points;
           _routeResult = result;
           _distanceKm = result.distanceKm;
-          _deliveryValue = realVal;
+          _deliveryValue = FareCalculator.calculateFare(
+            _selectedCategory!,
+            result.distanceKm,
+            surgeMultiplier: multiplier,
+            isRoundTrip: _roundTrip,
+          );
         });
         unawaited(
           _refreshTrafficAwarePricing(
@@ -588,6 +595,7 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
         distanceKm,
         surgeMultiplier: _surgeInfo?.multiplier ?? 1,
         routeResult: resolved,
+        isRoundTrip: _roundTrip,
       );
       setState(() {
         _smartRouteResult = resolved;
@@ -602,7 +610,9 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
           _selectedCategory!,
           distanceKm,
           surgeMultiplier: _surgeInfo?.multiplier ?? 1,
+          isRoundTrip: _roundTrip,
         );
+        _deliveryValue = _fareBreakdown!.totalFare;
       });
     } finally {
       if (mounted) {
@@ -1104,6 +1114,7 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
 
   Widget _buildStepDetails() {
     final cat = _selectedCategory?.category;
+    final isMotoboy = cat == VehicleCategory.motoboy;
     final isVan = cat == VehicleCategory.van;
     final isTruck = cat == VehicleCategory.truck;
     final isBike = cat == VehicleCategory.bike;
@@ -1152,14 +1163,14 @@ class _CreateDeliveryScreenState extends ConsumerState<CreateDeliveryScreen> {
           Text('Opções', style: AppTypography.labelLarge),
           const SizedBox(height: AppSpacing.md),
 
-          // Round trip (Van)
-          if (isVan) ...[
+          // Round trip
+          if (isMotoboy || isBike || isVan || isTruck) ...[
             _ToggleOption(
               icon: Icons.repeat_rounded,
               label: 'Ida e volta',
-              description: 'O veículo retorna ao ponto de coleta após entregar',
+              description: 'O cliente decide se haverá retorno, cobrado com 50% da corrida na volta',
               value: _roundTrip,
-              onChanged: (v) => setState(() => _roundTrip = v),
+              onChanged: _onRoundTripChanged,
             ),
             const SizedBox(height: AppSpacing.sm),
           ],

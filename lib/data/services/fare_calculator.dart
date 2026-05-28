@@ -11,6 +11,7 @@ class FareCalculator {
     double surgeMultiplier = 1,
     RouteResult? routeResult,
     double tollCostBrl = 0,
+    bool isRoundTrip = false,
   }) {
     return calculateBreakdown(
       category,
@@ -18,6 +19,7 @@ class FareCalculator {
       surgeMultiplier: surgeMultiplier,
       routeResult: routeResult,
       tollCostBrl: tollCostBrl,
+      isRoundTrip: isRoundTrip,
     ).totalFare;
   }
 
@@ -27,6 +29,7 @@ class FareCalculator {
     double surgeMultiplier = 1,
     RouteResult? routeResult,
     double tollCostBrl = 0,
+    bool isRoundTrip = false,
   }) {
     final baseFare = _round(
       PriceCalculator.calculate(
@@ -38,12 +41,16 @@ class FareCalculator {
     final ratio = routeResult?.trafficRatio ?? 1;
     final surchargeRate = _surchargeRate(ratio);
     final trafficSurcharge = _round(baseFare * surchargeRate);
+    final returnTripFee = isRoundTrip ? _round(baseFare * 0.5) : 0.0;
     final tollCost = _round(routeResult?.tollCostBrl ?? tollCostBrl);
-    final totalFare = _round(baseFare + trafficSurcharge + tollCost);
+    final totalFare = _round(
+      baseFare + trafficSurcharge + returnTripFee + tollCost,
+    );
 
     return FareBreakdown(
       baseFare: baseFare,
       trafficSurcharge: trafficSurcharge,
+      returnTripFee: returnTripFee,
       tollCost: tollCost,
       totalFare: totalFare,
       trafficRatioDisplay:

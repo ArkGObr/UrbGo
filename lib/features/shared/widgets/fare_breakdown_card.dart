@@ -25,6 +25,10 @@ class FareBreakdownCard extends StatelessWidget {
           _row('Tarifa base', breakdown.baseFare),
           const SizedBox(height: AppSpacing.sm),
           _row('Adicional de trafego', breakdown.trafficSurcharge),
+          if (breakdown.returnTripFee > 0) ...[
+            const SizedBox(height: AppSpacing.sm),
+            _row('Retorno (50%)', breakdown.returnTripFee),
+          ],
           const SizedBox(height: AppSpacing.sm),
           _row('Pedagio', breakdown.tollCost),
           const Padding(

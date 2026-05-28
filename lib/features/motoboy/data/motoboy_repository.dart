@@ -78,25 +78,55 @@ class MotoboyRepository {
 
     if (!isApproved) return [];
 
-    // Buscar corridas pendentes
-    // Tenta filtrar por categoria; se não houver resultados, busca todas
-    var data = await _db
-        .from('deliveries')
-        .select()
-        .eq('status', 'pending')
-        .eq('vehicle_category', category)
-        .order('created_at', ascending: false)
-        .limit(50);
-
-    // Removido o fallback para forçar que o entregador veja APENAS as corridas da sua categoria.
-
-    final all = (data as List).map((e) => DeliveryModel.fromJson(e)).toList();
+    final all = await _loadQueuedAvailableRuns(
+      motoboyId: motoboyId,
+      fallbackCategory: category,
+    );
 
     // Filtrar por raio no cliente (Haversine)
     return all.where((d) {
       final dist = _haversineDistanceKm(lat, lng, d.pickupLat, d.pickupLng);
       return dist <= radiusKm;
     }).toList();
+  }
+
+  Future<List<DeliveryModel>> _loadQueuedAvailableRuns({
+    required String motoboyId,
+    required String fallbackCategory,
+  }) async {
+    try {
+      final targets = await _db
+          .from('delivery_notification_targets')
+          .select('delivery_id, deliveries(*)')
+          .eq('motoboy_id', motoboyId)
+          .lte('available_from', DateTime.now().toIso8601String())
+          .order('available_from', ascending: true)
+          .limit(100);
+
+      final deliveries = (targets as List)
+          .map((row) => row['deliveries'])
+          .whereType<Map<String, dynamic>>()
+          .where(
+            (row) =>
+                row['status'] == 'pending' && row['motoboy_id'] == null,
+          )
+          .map(DeliveryModel.fromJson)
+          .toList();
+
+      if (deliveries.isNotEmpty) return deliveries;
+    } catch (_) {
+      // Se a fila ainda não existir no ambiente, usa o comportamento legado.
+    }
+
+    final data = await _db
+        .from('deliveries')
+        .select()
+        .eq('status', 'pending')
+        .eq('vehicle_category', fallbackCategory)
+        .order('created_at', ascending: false)
+        .limit(50);
+
+    return (data as List).map((e) => DeliveryModel.fromJson(e)).toList();
   }
 
   /// Stream de novas corridas disponíveis (Realtime)

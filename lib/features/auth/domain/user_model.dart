@@ -6,6 +6,7 @@ class UserModel {
   final String role; // 'client' | 'motoboy'
   final String status;
   final bool isReleased;
+  final String? blockReason;
   final String? avatarUrl;
   final String? description;
 
@@ -17,6 +18,7 @@ class UserModel {
     required this.role,
     required this.status,
     this.isReleased = true,
+    this.blockReason,
     this.avatarUrl,
     this.description,
   });
@@ -34,6 +36,7 @@ class UserModel {
     role: json['role'] as String,
     status: json['status'] as String? ?? 'active',
     isReleased: json['is_released'] as bool? ?? true,
+    blockReason: json['block_reason'] as String?,
     avatarUrl: json['avatar_url'] as String?,
     description: json['description'] as String?,
   );
@@ -46,6 +49,7 @@ class UserModel {
     'role': role,
     'status': status,
     'is_released': isReleased,
+    if (blockReason != null) 'block_reason': blockReason,
     if (avatarUrl != null) 'avatar_url': avatarUrl,
     if (description != null) 'description': description,
   };
@@ -58,6 +62,7 @@ class UserModel {
     String? role,
     String? status,
     bool? isReleased,
+    String? blockReason,
     String? avatarUrl,
     String? description,
   }) {
@@ -69,6 +74,7 @@ class UserModel {
       role: role ?? this.role,
       status: status ?? this.status,
       isReleased: isReleased ?? this.isReleased,
+      blockReason: blockReason ?? this.blockReason,
       avatarUrl: avatarUrl ?? this.avatarUrl,
       description: description ?? this.description,
     );

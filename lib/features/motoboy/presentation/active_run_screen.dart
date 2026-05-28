@@ -35,6 +35,13 @@ import '../domain/motoboy_providers.dart';
 /// Provider local para a posição do motoboy em tempo real
 final _myPositionProvider = StateProvider<LatLng?>((ref) => null);
 
+enum _ExternalNavigationApp {
+  googleMaps,
+  waze,
+  appleMaps,
+  browser,
+}
+
 class ActiveRunScreen extends ConsumerStatefulWidget {
   final String deliveryId;
 
@@ -317,9 +324,25 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
     } catch (_) {}
   }
 
-  Future<void> _openGoogleNavigation() async {
+  String get _navigationTravelMode {
+    final category = _delivery?.vehicleCategory;
+    if (category == VehicleCategory.bike) return 'bicycling';
+    return 'driving';
+  }
+
+  String _buildGoogleMapsWebUrl({
+    required LatLng destination,
+    String? waypoint,
+  }) {
+    return 'https://www.google.com/maps/dir/?api=1'
+        '&destination=${destination.latitude},${destination.longitude}'
+        '${waypoint != null ? '&waypoints=$waypoint' : ''}'
+        '&travelmode=$_navigationTravelMode';
+  }
+
+  Future<bool> _launchExternalNavigation(_ExternalNavigationApp app) async {
     final delivery = _delivery;
-    if (delivery == null) return;
+    if (delivery == null) return false;
 
     final goingToPickup = delivery.status == DeliveryStatus.accepted;
     final destination = goingToPickup
@@ -332,34 +355,147 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
         ? '${delivery.extraStopLat},${delivery.extraStopLng}'
         : null;
 
-    try {
-      if (Platform.isAndroid) {
-        // Usa Intent nativo de navegação do Google Maps no modo Direção
-        final uri = waypoint == null
-            ? Uri.parse(
-                'google.navigation:q=${destination.latitude},${destination.longitude}&mode=d',
-              )
-            : Uri.parse(
-                'https://www.google.com/maps/dir/?api=1&destination=${destination.latitude},${destination.longitude}&waypoints=$waypoint&travelmode=driving',
-              );
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(
-            uri,
-            mode: waypoint == null
-                ? LaunchMode.platformDefault
-                : LaunchMode.externalApplication,
-          );
-          return;
-        }
-      }
+    final googleWebUri = Uri.parse(
+      _buildGoogleMapsWebUrl(destination: destination, waypoint: waypoint),
+    );
 
-      // Fallback para web URL, forçando a abertura no app externo se disponível
-      final fallbackUri = Uri.parse(
-        'https://www.google.com/maps/dir/?api=1&destination=${destination.latitude},${destination.longitude}'
-        '${waypoint != null ? '&waypoints=$waypoint' : ''}&travelmode=driving',
+    final candidateUris = switch (app) {
+      _ExternalNavigationApp.googleMaps => [
+          if (Platform.isAndroid && waypoint == null)
+            Uri.parse(
+              'google.navigation:q=${destination.latitude},${destination.longitude}'
+              '&mode=${_navigationTravelMode == 'bicycling' ? 'l' : 'd'}',
+            ),
+          if (Platform.isIOS)
+            Uri.parse(
+              'comgooglemaps://?daddr=${destination.latitude},${destination.longitude}'
+              '&directionsmode=$_navigationTravelMode',
+            ),
+          googleWebUri,
+        ],
+      _ExternalNavigationApp.waze => [
+          Uri.parse(
+            'waze://?ll=${destination.latitude},${destination.longitude}&navigate=yes',
+          ),
+          Uri.parse(
+            'https://waze.com/ul?ll=${destination.latitude},${destination.longitude}&navigate=yes',
+          ),
+        ],
+      _ExternalNavigationApp.appleMaps => [
+          Uri.parse(
+            'maps://?daddr=${destination.latitude},${destination.longitude}'
+            '&dirflg=${_navigationTravelMode == 'bicycling' ? 'w' : 'd'}',
+          ),
+        ],
+      _ExternalNavigationApp.browser => [googleWebUri],
+    };
+
+    for (final uri in candidateUris) {
+      if (!await canLaunchUrl(uri)) continue;
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      return true;
+    }
+
+    return false;
+  }
+
+  Future<void> _openExternalNavigationPicker() async {
+    final delivery = _delivery;
+    if (delivery == null) return;
+
+    final app = await showModalBottomSheet<_ExternalNavigationApp>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
+      ),
+      builder: (context) {
+        final options = <({
+          _ExternalNavigationApp app,
+          IconData icon,
+          String title,
+          String subtitle,
+        })>[
+          (
+            app: _ExternalNavigationApp.googleMaps,
+            icon: Icons.map_rounded,
+            title: 'Google Maps',
+            subtitle: 'Abrir rota no Google Maps',
+          ),
+          (
+            app: _ExternalNavigationApp.waze,
+            icon: Icons.navigation_rounded,
+            title: 'Waze',
+            subtitle: 'Abrir rota no Waze',
+          ),
+          if (Platform.isIOS)
+            (
+              app: _ExternalNavigationApp.appleMaps,
+              icon: Icons.directions_car_filled_rounded,
+              title: 'Apple Maps',
+              subtitle: 'Abrir rota no Apple Maps',
+            ),
+          (
+            app: _ExternalNavigationApp.browser,
+            icon: Icons.open_in_browser_rounded,
+            title: 'Abrir no navegador',
+            subtitle: 'Usar o link externo da rota',
+          ),
+        ];
+
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              AppSpacing.lg,
+              AppSpacing.lg,
+              AppSpacing.xl2,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Escolha o app de navegação', style: AppTypography.h3),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  'A rota será aberta fora do app para você usar o navegador de sua preferência.',
+                  style: AppTypography.bodySmall,
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                for (final option in options) ...[
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(option.icon, color: AppColors.primary),
+                    title: Text(option.title, style: AppTypography.labelLarge),
+                    subtitle: Text(
+                      option.subtitle,
+                      style: AppTypography.bodySmall,
+                    ),
+                    onTap: () => Navigator.of(context).pop(option.app),
+                  ),
+                  if (option != options.last)
+                    const Divider(color: AppColors.surfaceBorder, height: 1),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (app == null) return;
+
+    try {
+      final launched = await _launchExternalNavigation(app);
+      if (launched || !mounted) return;
+
+      AppToast.show(
+        context,
+        title: 'App indisponível',
+        subtitle: 'Não foi possível abrir o app selecionado neste dispositivo.',
+        type: AppToastType.error,
       );
-      await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         AppToast.show(
           context,
@@ -444,7 +580,7 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
       // Quando confirmado PELA NOTIFICAÇÃO, leva ao Maps automaticamente
       if (fromNotification && mounted) {
         await Future.delayed(const Duration(milliseconds: 300));
-        _openGoogleNavigation();
+        _openExternalNavigationPicker();
       }
     } catch (e) {
       if (mounted) {
@@ -1040,7 +1176,7 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                         ),
                       // Navegar GPS
                       GestureDetector(
-                        onTap: _openGoogleNavigation,
+                        onTap: _openExternalNavigationPicker,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 16,
@@ -1067,7 +1203,7 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                               ),
                               const SizedBox(width: 6),
                               Text(
-                                'Abrir no Google Maps',
+                                'Abrir navegação',
                                 style: AppTypography.labelLarge.copyWith(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w700,

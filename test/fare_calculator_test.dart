@@ -67,5 +67,17 @@ void main() {
       expect(withTraffic.totalFare, 21.3);
       expect(legacy, 15);
     });
+
+    test('cobra metade da corrida no retorno quando ida e volta estiver ativa', () {
+      final breakdown = FareCalculator.calculateBreakdown(
+        VehicleCategory.motoboy.info,
+        5,
+        isRoundTrip: true,
+      );
+
+      expect(breakdown.baseFare, 15);
+      expect(breakdown.returnTripFee, 7.5);
+      expect(breakdown.totalFare, 22.5);
+    });
   });
 }

@@ -32,6 +32,9 @@ class _MotoboyReleasePendingScreenState
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authNotifierProvider).valueOrNull;
+    final blockMessage = user?.blockReason?.trim().isNotEmpty == true
+        ? user!.blockReason!.trim()
+        : 'Seu cadastro está em análise automática. Em breve você poderá rodar!';
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -58,10 +61,7 @@ class _MotoboyReleasePendingScreenState
               const SizedBox(height: AppSpacing.xl2),
               Text('Aguardando aprovação', style: AppTypography.display2),
               const SizedBox(height: AppSpacing.md),
-              Text(
-                'Seus documentos foram enviados e sua conta de motorista ainda não foi liberada para operar. Assim que a análise terminar, o acesso será liberado automaticamente.',
-                style: AppTypography.bodyLarge,
-              ),
+              Text(blockMessage, style: AppTypography.bodyLarge),
               if (user != null) ...[
                 const SizedBox(height: AppSpacing.lg),
                 Text(
