@@ -220,7 +220,7 @@ class MotoboyRepository {
         .toIso8601String();
     final data = await _db
         .from('deliveries')
-        .select('value, commission, completed_at')
+        .select('value, completed_at')
         .eq('motoboy_id', motoboyId)
         .eq('status', 'completed')
         .gte('completed_at', since)
@@ -231,9 +231,7 @@ class MotoboyRepository {
         .map(
           (row) => (
             completedAt: DateTime.parse(row['completed_at'] as String),
-            net:
-                ((row['value'] as num).toDouble() -
-                (row['commission'] as num).toDouble()),
+            net: (row['value'] as num).toDouble(),
           ),
         )
         .toList();

@@ -383,14 +383,23 @@ class NotificationService {
 
   void _navigate(String? deliveryId, String? role, {String? type}) {
     if (deliveryId == null) return;
-    // A navegação real usa um NavigatorKey global definido em app.dart
-    // As callbacks são injetadas no initialize do app
-    if (role == 'motoboy' && type == 'new_delivery') {
-      _pendingRoute = '/motoboy/runs';
-    } else if (role == 'motoboy' && _motoboyActivePath != null) {
-      _pendingRoute = _motoboyActivePath!(deliveryId);
-    } else if (_clientTrackingPath != null) {
-      _pendingRoute = _clientTrackingPath!(deliveryId);
+
+    switch (type) {
+      case 'new_delivery':
+        _pendingRoute = '/motoboy/runs';
+
+      case 'new_message':
+        _pendingRoute = role == 'motoboy'
+            ? '/motoboy/chat/$deliveryId'
+            : '/client/chat/$deliveryId';
+
+      default:
+        // Status de entrega (accepted, in_progress, completed, cancelled)
+        if (role == 'motoboy' && _motoboyActivePath != null) {
+          _pendingRoute = _motoboyActivePath!(deliveryId);
+        } else if (_clientTrackingPath != null) {
+          _pendingRoute = _clientTrackingPath!(deliveryId);
+        }
     }
   }
 

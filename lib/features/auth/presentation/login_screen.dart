@@ -26,9 +26,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   bool _obscurePassword = true;
-  bool _openingClientTerms = false;
-  bool _openingDriverTerms = false;
-  bool _openingPrivacy = false;
 
   @override
   void dispose() {
@@ -37,13 +34,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
-  Future<void> _openPrivacyPolicy() async {
-    setState(() => _openingPrivacy = true);
+  Future<void> _openPrivacyPolicy() => PrivacyPolicySheet.show(context);
+
+  Future<void> _openAssetPdf(String assetPath, String fileName) async {
     try {
-      await PrivacyPolicySheet.show(context);
-    } finally {
+      await DocumentOpenerService().openAssetPdf(
+        assetPath: assetPath,
+        fileName: fileName,
+      );
+    } catch (_) {
       if (mounted) {
-        setState(() => _openingPrivacy = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Não foi possível abrir o documento.'),
+            backgroundColor: AppColors.error,
+          ),
+        );
       }
     }
   }
@@ -60,46 +66,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final authState = ref.read(authNotifierProvider);
     if (authState.hasError) {
       _showError(authState.error.toString());
-    }
-  }
-
-  Future<void> _openTerms({
-    required String assetPath,
-    required String fileName,
-    required bool isClient,
-  }) async {
-    setState(() {
-      if (isClient) {
-        _openingClientTerms = true;
-      } else {
-        _openingDriverTerms = true;
-      }
-    });
-
-    try {
-      await DocumentOpenerService().openAssetPdf(
-        assetPath: assetPath,
-        fileName: fileName,
-      );
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Não foi possível abrir o termo agora.'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          if (isClient) {
-            _openingClientTerms = false;
-          } else {
-            _openingDriverTerms = false;
-          }
-        });
-      }
     }
   }
 
@@ -364,114 +330,99 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: AppSpacing.xl2),
+
+                // Link cadastro
                 FadeSlideIn(
                   delay: const Duration(milliseconds: 500),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(AppSpacing.lg),
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(AppRadius.md),
-                      border: Border.all(color: AppColors.surfaceBorder),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Documentos legais', style: AppTypography.h3),
-                        const SizedBox(height: AppSpacing.xs),
-                        Text(
-                          'Consulte os termos de uso e a politica de privacidade sempre que precisar.',
-                          style: AppTypography.bodySmall,
-                        ),
-                        const SizedBox(height: AppSpacing.md),
-                        Wrap(
-                          spacing: AppSpacing.sm,
-                          runSpacing: AppSpacing.sm,
+                  child: Center(
+                    child: TextButton(
+                      onPressed: () => context.go('/register'),
+                      child: RichText(
+                        text: TextSpan(
+                          text: 'Não tem conta? ',
+                          style: AppTypography.bodyMedium,
                           children: [
-                            OutlinedButton.icon(
-                              onPressed: _openingClientTerms
-                                  ? null
-                                  : () => _openTerms(
-                                      assetPath: _clientTermsAsset,
-                                      fileName: 'Termo_Cliente_ARKGO.pdf',
-                                      isClient: true,
-                                    ),
-                              icon: _openingClientTerms
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : const Icon(Icons.picture_as_pdf_outlined),
-                              label: const Text('Termo do cliente'),
-                            ),
-                            OutlinedButton.icon(
-                              onPressed: _openingDriverTerms
-                                  ? null
-                                  : () => _openTerms(
-                                      assetPath: _driverTermsAsset,
-                                      fileName: 'Termo_Entregador_ARKGO.pdf',
-                                      isClient: false,
-                                    ),
-                              icon: _openingDriverTerms
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : const Icon(Icons.picture_as_pdf_outlined),
-                              label: const Text('Termo do entregador'),
-                            ),
-                            OutlinedButton.icon(
-                              onPressed: _openingPrivacy
-                                  ? null
-                                  : _openPrivacyPolicy,
-                              icon: _openingPrivacy
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : const Icon(Icons.privacy_tip_outlined),
-                              label: const Text('Politica de privacidade'),
+                            TextSpan(
+                              text: 'Cadastre-se',
+                              style: AppTypography.labelLarge.copyWith(
+                                color: AppColors.primary,
+                              ),
                             ),
                           ],
                         ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(height: AppSpacing.xl2),
+                const SizedBox(height: AppSpacing.lg),
 
-                // Link cadastro
-                Center(
-                  child: TextButton(
-                    onPressed: () => context.go('/register'),
-                    child: RichText(
-                      text: TextSpan(
-                        text: 'Não tem conta? ',
-                        style: AppTypography.bodyMedium,
-                        children: [
-                          TextSpan(
-                            text: 'Cadastre-se',
-                            style: AppTypography.labelLarge.copyWith(
-                              color: AppColors.primary,
-                            ),
+                // Footer com links legais discretos
+                FadeSlideIn(
+                  delay: const Duration(milliseconds: 600),
+                  child: Center(
+                    child: Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: AppSpacing.xs,
+                      children: [
+                        _LegalLink(
+                          label: 'Termos do cliente',
+                          onTap: () => _openAssetPdf(
+                            _clientTermsAsset,
+                            'Termo_Cliente_ARKGO.pdf',
                           ),
-                        ],
-                      ),
+                        ),
+                        Text(
+                          '·',
+                          style: AppTypography.bodySmall.copyWith(
+                            color: AppColors.textTertiary,
+                          ),
+                        ),
+                        _LegalLink(
+                          label: 'Termos do entregador',
+                          onTap: () => _openAssetPdf(
+                            _driverTermsAsset,
+                            'Termo_Entregador_ARKGO.pdf',
+                          ),
+                        ),
+                        Text(
+                          '·',
+                          style: AppTypography.bodySmall.copyWith(
+                            color: AppColors.textTertiary,
+                          ),
+                        ),
+                        _LegalLink(
+                          label: 'Privacidade',
+                          onTap: _openPrivacyPolicy,
+                        ),
+                      ],
                     ),
                   ),
                 ),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LegalLink extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+
+  const _LegalLink({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Text(
+        label,
+        style: AppTypography.bodySmall.copyWith(
+          color: AppColors.textTertiary,
+          decoration: TextDecoration.underline,
+          decorationColor: AppColors.textTertiary,
         ),
       ),
     );

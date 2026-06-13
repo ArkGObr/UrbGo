@@ -755,7 +755,7 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
       ref.invalidate(availableRunsProvider);
       ref.invalidate(motoboyStreamProvider);
       if (mounted) {
-        await _showSuccessDialog(delivery.netEarnings, delivery.commission);
+        await _showSuccessDialog(delivery.value, delivery.commission);
       }
     } catch (e) {
       if (mounted) {
@@ -811,16 +811,14 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Comissão', style: AppTypography.bodySmall),
+                      Text('Você recebe', style: AppTypography.labelLarge),
                       const SizedBox(width: AppSpacing.sm),
                       Expanded(
                         child: Text(
-                          'Descontado: ${CurrencyFormatter.format(commission)}',
+                          CurrencyFormatter.format(earnings),
                           textAlign: TextAlign.right,
-                          style: AppTypography.bodySmall.copyWith(
-                            color: AppColors.error,
-                          ),
-                          maxLines: 2,
+                          style: AppTypography.numericLarge,
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -833,16 +831,18 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'Você deve receber',
-                        style: AppTypography.labelLarge,
+                        'Taxa da plataforma',
+                        style: AppTypography.bodySmall,
                       ),
                       const SizedBox(width: AppSpacing.sm),
                       Expanded(
                         child: Text(
-                          CurrencyFormatter.format(earnings),
+                          '− ${CurrencyFormatter.format(commission)} do saldo',
                           textAlign: TextAlign.right,
-                          style: AppTypography.numericLarge,
-                          maxLines: 1,
+                          style: AppTypography.bodySmall.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -1379,7 +1379,7 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                           const SizedBox(width: AppSpacing.sm),
                         ],
                         Text(
-                          CurrencyFormatter.format(delivery.netEarnings),
+                          CurrencyFormatter.format(delivery.value),
                           style: AppTypography.numericLarge,
                         ),
                       ],

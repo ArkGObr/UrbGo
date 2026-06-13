@@ -607,82 +607,28 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   }
 
   Widget _buildTermsAcceptanceSection() {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.surfaceBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Termos legais', style: AppTypography.h3),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            'Leia e aceite o termo correspondente ao seu perfil e a politica de privacidade antes de concluir o cadastro.',
-            style: AppTypography.bodySmall,
-          ),
-          const SizedBox(height: AppSpacing.md),
-          OutlinedButton.icon(
-            onPressed: _openingTerms ? null : _openCurrentTerms,
-            icon: _openingTerms
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.picture_as_pdf_outlined),
-            label: Text('Abrir $_currentTermsLabel'),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          CheckboxListTile(
-            value: _hasAcceptedCurrentTerms,
-            onChanged: (value) {
-              setState(() {
-                if (_selectedRole == 'client') {
-                  _acceptedClientTerms = value ?? false;
-                } else {
-                  _acceptedDriverTerms = value ?? false;
-                }
-              });
-            },
-            contentPadding: EdgeInsets.zero,
-            controlAffinity: ListTileControlAffinity.leading,
-            activeColor: AppColors.primary,
-            title: Text(
-              'Li e aceito o $_currentTermsLabel.',
-              style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          OutlinedButton.icon(
-            onPressed: _openPrivacyPolicy,
-            icon: const Icon(Icons.privacy_tip_outlined),
-            label: const Text('Abrir Politica de Privacidade'),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          CheckboxListTile(
-            value: _acceptedPrivacyPolicy,
-            onChanged: (value) {
-              setState(() {
-                _acceptedPrivacyPolicy = value ?? false;
-              });
-            },
-            contentPadding: EdgeInsets.zero,
-            controlAffinity: ListTileControlAffinity.leading,
-            activeColor: AppColors.primary,
-            title: Text(
-              'Li e aceito a Politica de Privacidade.',
-              style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ),
-        ],
-      ),
+    return Column(
+      children: [
+        _TermsCheckRow(
+          accepted: _hasAcceptedCurrentTerms,
+          onChanged: (v) => setState(() {
+            if (_selectedRole == 'client') {
+              _acceptedClientTerms = v;
+            } else {
+              _acceptedDriverTerms = v;
+            }
+          }),
+          linkLabel: _currentTermsLabel,
+          onLinkTap: _openCurrentTerms,
+        ),
+        const SizedBox(height: AppSpacing.md),
+        _TermsCheckRow(
+          accepted: _acceptedPrivacyPolicy,
+          onChanged: (v) => setState(() => _acceptedPrivacyPolicy = v),
+          linkLabel: 'Política de Privacidade',
+          onLinkTap: _openPrivacyPolicy,
+        ),
+      ],
     );
   }
 
@@ -1637,6 +1583,66 @@ class _CnpjMaskFormatter extends TextInputFormatter {
       selection: TextSelection.collapsed(
         offset: _cursorAfterDigits(text, digitsBeforeCursor),
       ),
+    );
+  }
+}
+
+// ── Linha de aceite de termos com link inline ──────────────────
+class _TermsCheckRow extends StatelessWidget {
+  final bool accepted;
+  final void Function(bool) onChanged;
+  final String linkLabel;
+  final VoidCallback onLinkTap;
+
+  const _TermsCheckRow({
+    required this.accepted,
+    required this.onChanged,
+    required this.linkLabel,
+    required this.onLinkTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        SizedBox(
+          width: 24,
+          height: 24,
+          child: Checkbox(
+            value: accepted,
+            onChanged: (v) => onChanged(v ?? false),
+            activeColor: AppColors.primary,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            visualDensity: VisualDensity.compact,
+          ),
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                'Li e aceito ',
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              GestureDetector(
+                onTap: onLinkTap,
+                child: Text(
+                  linkLabel,
+                  style: AppTypography.bodySmall.copyWith(
+                    color: AppColors.primary,
+                    decoration: TextDecoration.underline,
+                    decorationColor: AppColors.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

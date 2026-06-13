@@ -308,7 +308,8 @@ class DeliveryModel {
     _ => Icons.payment_rounded,
   };
 
-  double get netEarnings => _roundCurrency(value - commission);
+  // commission é debitado do saldo do entregador — ele recebe value integral
+  double get platformFee => _roundCurrency(commission);
 
   MotoboyReputation get motoboyReputation => MotoboyReputation.fromMetrics(
     avgRating: motoboyAvgRating ?? 5.0,

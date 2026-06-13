@@ -190,7 +190,7 @@ class _AvailableRunsScreenState extends ConsumerState<AvailableRunsScreen> {
               ? 'Nova corrida disponível!'
               : '$newCount novas corridas disponíveis!',
           subtitle:
-              'Você recebe ${CurrencyFormatter.format(value)} • Aceite rápido!',
+              'Você recebe ${CurrencyFormatter.format(value)} — Aceite rápido!',
           type: AppToastType.info,
           duration: const Duration(seconds: 5),
         );
@@ -520,7 +520,7 @@ class _RunCard extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    CurrencyFormatter.format(delivery.netEarnings),
+                    CurrencyFormatter.format(delivery.value),
                     style: AppTypography.numericMedium.copyWith(
                       color: AppColors.primary,
                     ),
