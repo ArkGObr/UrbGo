@@ -1,18 +1,33 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+final _kUrgentVibrationPattern = Int64List.fromList([
+  0,
+  700,
+  250,
+  900,
+  250,
+  900,
+]);
+
 // Canal principal — corridas, status, saldo
-const _kAndroidChannel = AndroidNotificationChannel(
-  'arkgo_channel',
-  'ArkGo',
-  description: 'Notificações de corridas e saldo',
-  importance: Importance.high,
+final _kAndroidChannel = AndroidNotificationChannel(
+  'arkgo_urgent_channel',
+  'ArkGo Urgente',
+  description: 'Notificações urgentes de corridas, status e atendimento',
+  importance: Importance.max,
   playSound: true,
+  sound: const RawResourceAndroidNotificationSound('arkgo_alert'),
+  enableVibration: true,
+  vibrationPattern: _kUrgentVibrationPattern,
+  audioAttributesUsage: AudioAttributesUsage.alarm,
 );
 
 // Canal para notificações de re-engajamento (inatividade)
@@ -22,7 +37,37 @@ const _kReengagementChannel = AndroidNotificationChannel(
   description: 'Lembretes para voltar a fazer entregas',
   importance: Importance.defaultImportance,
   playSound: true,
+  enableVibration: true,
 );
+
+DarwinNotificationDetails get _kDarwinUrgentDetails =>
+    const DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentBanner: true,
+      presentList: true,
+      presentSound: true,
+      sound: 'default',
+      interruptionLevel: InterruptionLevel.active,
+    );
+
+AndroidNotificationDetails get _kAndroidUrgentDetails =>
+    AndroidNotificationDetails(
+      _kAndroidChannel.id,
+      _kAndroidChannel.name,
+      channelDescription: _kAndroidChannel.description,
+      icon: 'ic_notification',
+      color: const Color(0xFF99eb09),
+      largeIcon: const DrawableResourceAndroidBitmap('@mipmap/launcher_icon'),
+      importance: Importance.max,
+      priority: Priority.max,
+      playSound: true,
+      sound: const RawResourceAndroidNotificationSound('arkgo_alert'),
+      enableVibration: true,
+      vibrationPattern: _kUrgentVibrationPattern,
+      audioAttributesUsage: AudioAttributesUsage.alarm,
+      category: AndroidNotificationCategory.alarm,
+    );
 
 /// Handler de background — top-level obrigatório; roda em isolate separado.
 /// Cuida apenas de mensagens data-only (sem campo `notification`).
@@ -57,16 +102,8 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     title,
     body,
     NotificationDetails(
-      android: AndroidNotificationDetails(
-        _kAndroidChannel.id,
-        _kAndroidChannel.name,
-        channelDescription: _kAndroidChannel.description,
-        icon: 'ic_notification',
-        color: const Color(0xFF99eb09),
-        importance: Importance.high,
-        priority: Priority.high,
-      ),
-      iOS: const DarwinNotificationDetails(presentSound: true),
+      android: _kAndroidUrgentDetails,
+      iOS: _kDarwinUrgentDetails,
     ),
     payload: message.data['deliveryId'],
   );
@@ -97,6 +134,11 @@ class NotificationService {
 
     // 1. Solicitar permissão (iOS + Android 13+)
     await _fcm.requestPermission(alert: true, badge: true, sound: true);
+    await _fcm.setForegroundNotificationPresentationOptions(
+      alert: false,
+      badge: true,
+      sound: false,
+    );
 
     // 2. Inicializar flutter_local_notifications
     await _local.initialize(
@@ -185,19 +227,8 @@ class NotificationService {
       n.title,
       n.body,
       NotificationDetails(
-        android: AndroidNotificationDetails(
-          _kAndroidChannel.id,
-          _kAndroidChannel.name,
-          channelDescription: _kAndroidChannel.description,
-          icon: 'ic_notification',
-          color: const Color(0xFF99eb09),
-          largeIcon: const DrawableResourceAndroidBitmap(
-            '@mipmap/launcher_icon',
-          ),
-          importance: Importance.high,
-          priority: Priority.high,
-        ),
-        iOS: const DarwinNotificationDetails(),
+        android: _kAndroidUrgentDetails,
+        iOS: _kDarwinUrgentDetails,
       ),
       payload: message.data['deliveryId'],
     );
@@ -294,18 +325,28 @@ class NotificationService {
       title,
       body,
       NotificationDetails(
-        android: AndroidNotificationDetails(
-          _kAndroidChannel.id,
-          _kAndroidChannel.name,
-          channelDescription: _kAndroidChannel.description,
-          icon: 'ic_notification',
-          color: const Color(0xFF99eb09),
-          importance: Importance.high,
-          priority: Priority.high,
-        ),
-        iOS: const DarwinNotificationDetails(),
+        android: _kAndroidUrgentDetails,
+        iOS: _kDarwinUrgentDetails,
       ),
       payload: payload,
+    );
+  }
+
+  Future<void> showNewDeliveryAlarm({
+    required String deliveryId,
+    required String title,
+    required String body,
+  }) async {
+    await HapticFeedback.heavyImpact();
+    await _local.show(
+      deliveryId.hashCode,
+      title,
+      body,
+      NotificationDetails(
+        android: _kAndroidUrgentDetails,
+        iOS: _kDarwinUrgentDetails,
+      ),
+      payload: 'motoboy|new_delivery|$deliveryId',
     );
   }
 
@@ -313,21 +354,40 @@ class NotificationService {
     if (response.actionId != null) {
       _actionStreamController.add(response.actionId!);
     } else {
-      _navigate(response.payload, response.payload);
+      final parsed = _parseLocalPayload(response.payload);
+      _navigate(parsed.deliveryId, parsed.role, type: parsed.type);
     }
   }
 
   void _handleRemoteNavigation(RemoteMessage message) {
     final deliveryId = message.data['deliveryId'] as String?;
     final role = message.data['role'] as String?;
-    _navigate(deliveryId, role);
+    final type = message.data['type'] as String?;
+    _navigate(deliveryId, role, type: type);
   }
 
-  void _navigate(String? deliveryId, String? role) {
+  ({String? deliveryId, String? role, String? type}) _parseLocalPayload(
+    String? payload,
+  ) {
+    if (payload == null || payload.isEmpty) {
+      return (deliveryId: null, role: null, type: null);
+    }
+
+    final parts = payload.split('|');
+    if (parts.length == 3) {
+      return (role: parts[0], type: parts[1], deliveryId: parts[2]);
+    }
+
+    return (deliveryId: payload, role: null, type: null);
+  }
+
+  void _navigate(String? deliveryId, String? role, {String? type}) {
     if (deliveryId == null) return;
     // A navegação real usa um NavigatorKey global definido em app.dart
     // As callbacks são injetadas no initialize do app
-    if (role == 'motoboy' && _motoboyActivePath != null) {
+    if (role == 'motoboy' && type == 'new_delivery') {
+      _pendingRoute = '/motoboy/runs';
+    } else if (role == 'motoboy' && _motoboyActivePath != null) {
       _pendingRoute = _motoboyActivePath!(deliveryId);
     } else if (_clientTrackingPath != null) {
       _pendingRoute = _clientTrackingPath!(deliveryId);

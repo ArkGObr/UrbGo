@@ -112,17 +112,29 @@ async function sendToToken(
           notification: { title, body },
           android: {
             priority: "HIGH",
+            ttl: "0s",
+            direct_boot_ok: true,
             notification: {
-              channel_id: "arkgo_channel",
+              channel_id: "arkgo_urgent_channel",
               notification_priority: "PRIORITY_HIGH",
-              default_sound: true,
+              sound: "arkgo_alert",
               default_vibrate_timings: true,
               default_light_settings: true,
+              visibility: "PUBLIC",
             },
           },
           apns: {
-            headers: { "apns-priority": "10" },
-            payload: { aps: { sound: "default", badge: 1 } },
+            headers: {
+              "apns-priority": "10",
+              "apns-push-type": "alert",
+            },
+            payload: {
+              aps: {
+                sound: "default",
+                badge: 1,
+                "interruption-level": "active",
+              },
+            },
           },
           data: safeData,
         },

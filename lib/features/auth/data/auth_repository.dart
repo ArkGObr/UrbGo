@@ -29,6 +29,10 @@ class AuthRepository {
     String? addressNumber,
     String? addressComplement,
     String? addressLabel,
+    required DateTime termsAcceptedAt,
+    required String termsVersion,
+    required DateTime privacyAcceptedAt,
+    required String privacyVersion,
     File? identityDocumentFile,
     File? selfieWithDocumentFile,
     File? cnhPhotoFile,
@@ -62,6 +66,11 @@ class AuthRepository {
         if (addressNumber != null) 'address_number': addressNumber,
         if (addressComplement != null) 'address_complement': addressComplement,
         if (addressLabel != null) 'address_label': addressLabel,
+        'terms_accepted_at': termsAcceptedAt.toIso8601String(),
+        'terms_version': termsVersion,
+        'terms_role': role,
+        'privacy_accepted_at': privacyAcceptedAt.toIso8601String(),
+        'privacy_version': privacyVersion,
       },
     );
 
@@ -118,7 +127,15 @@ class AuthRepository {
 
         if (data != null) {
           // Já lidamos com isso de forma global no novo Trigger, mas mantemos update pra redundancia de safety.
-          final updateData = <String, dynamic>{'phone': phone, 'name': name};
+          final updateData = <String, dynamic>{
+            'phone': phone,
+            'name': name,
+            'terms_accepted_at': termsAcceptedAt.toIso8601String(),
+            'terms_version': termsVersion,
+            'terms_role': role,
+            'privacy_accepted_at': privacyAcceptedAt.toIso8601String(),
+            'privacy_version': privacyVersion,
+          };
           if (clientType != null) updateData['client_type'] = clientType;
           if (document != null) updateData['document'] = document;
           await _db.from('users').update(updateData).eq('id', userId);
@@ -140,6 +157,11 @@ class AuthRepository {
           'role': role,
           'status': role == 'motoboy' ? 'pending' : 'active',
           'is_released': role == 'motoboy' ? false : true,
+          'terms_accepted_at': termsAcceptedAt.toIso8601String(),
+          'terms_version': termsVersion,
+          'terms_role': role,
+          'privacy_accepted_at': privacyAcceptedAt.toIso8601String(),
+          'privacy_version': privacyVersion,
           if (clientType != null) 'client_type': clientType,
           if (document != null) 'document': document,
         });

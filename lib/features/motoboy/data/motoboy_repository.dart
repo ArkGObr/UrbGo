@@ -58,23 +58,9 @@ class MotoboyRepository {
     required double lng,
     double radiusKm = 10.0,
   }) async {
-    // Buscar categoria e aprovação do motoboy (com fallback se RLS falhar)
-    String category = 'motoboy';
-    bool isApproved = false;
-    try {
-      final m = await _db
-          .from('motoboys')
-          .select('vehicle_category, users(status, is_released)')
-          .eq('id', motoboyId)
-          .single();
-      category = m['vehicle_category'] as String? ?? 'motoboy';
-      final linkedUser = m['users'] as Map<String, dynamic>?;
-      isApproved =
-          linkedUser?['is_released'] == true &&
-          linkedUser?['status'] == 'active';
-    } catch (_) {
-      // Se falhar (ex: recursão RLS), segue com default
-    }
+    final context = await _loadAvailabilityContext(motoboyId);
+    final category = context.category;
+    final isApproved = context.isApproved;
 
     if (!isApproved) return [];
 
@@ -88,6 +74,35 @@ class MotoboyRepository {
       final dist = _haversineDistanceKm(lat, lng, d.pickupLat, d.pickupLng);
       return dist <= radiusKm;
     }).toList();
+  }
+
+  Future<({String category, bool isApproved})> _loadAvailabilityContext(
+    String motoboyId,
+  ) async {
+    try {
+      final motoboyRow = await _db
+          .from('motoboys')
+          .select('vehicle_category, approval_status')
+          .eq('id', motoboyId)
+          .maybeSingle();
+      final userRow = await _db
+          .from('users')
+          .select('status, is_released')
+          .eq('id', motoboyId)
+          .maybeSingle();
+
+      final category = motoboyRow?['vehicle_category'] as String? ?? 'motoboy';
+      final approvalStatus = motoboyRow?['approval_status'] as String?;
+      final isReleased = userRow?['is_released'] == true;
+      final isActive = userRow?['status'] == 'active';
+
+      final isApproved =
+          approvalStatus == 'approved' || (isReleased && isActive);
+
+      return (category: category, isApproved: isApproved);
+    } catch (_) {
+      return (category: 'motoboy', isApproved: false);
+    }
   }
 
   Future<List<DeliveryModel>> _loadQueuedAvailableRuns({
@@ -107,8 +122,7 @@ class MotoboyRepository {
           .map((row) => row['deliveries'])
           .whereType<Map<String, dynamic>>()
           .where(
-            (row) =>
-                row['status'] == 'pending' && row['motoboy_id'] == null,
+            (row) => row['status'] == 'pending' && row['motoboy_id'] == null,
           )
           .map(DeliveryModel.fromJson)
           .toList();
@@ -129,10 +143,37 @@ class MotoboyRepository {
     return (data as List).map((e) => DeliveryModel.fromJson(e)).toList();
   }
 
-  /// Stream de novas corridas disponíveis (Realtime)
-  RealtimeChannel watchAvailableRuns(void Function() onNewRun) {
+  /// Stream de novas corridas disponíveis (Realtime).
+  /// Escuta a fila do próprio motoboy, incluindo updates quando a onda
+  /// é liberada pelo cron (`sent_at` passa a ser preenchido).
+  RealtimeChannel watchAvailableRuns({
+    required String motoboyId,
+    required void Function() onNewRun,
+  }) {
     return _db
-        .channel('available-runs')
+        .channel('available-runs-$motoboyId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'delivery_notification_targets',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'motoboy_id',
+            value: motoboyId,
+          ),
+          callback: (_) => onNewRun(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'delivery_notification_targets',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'motoboy_id',
+            value: motoboyId,
+          ),
+          callback: (_) => onNewRun(),
+        )
         .onPostgresChanges(
           event: PostgresChangeEvent.insert,
           schema: 'public',

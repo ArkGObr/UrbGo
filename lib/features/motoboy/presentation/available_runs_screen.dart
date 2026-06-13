@@ -183,7 +183,7 @@ class _AvailableRunsScreenState extends ConsumerState<AvailableRunsScreen> {
       // Exibe toast apenas quando novas corridas aparecem (não no carregamento inicial)
       if (_lastRunCount >= 0 && nextList.length > prevList.length) {
         final newCount = nextList.length - prevList.length;
-        final value = nextList.first.netEarnings;
+        final value = nextList.first.value;
         AppToast.show(
           context,
           title: newCount == 1

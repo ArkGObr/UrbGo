@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.provider.OpenableColumns
+import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -18,6 +19,7 @@ import kotlin.concurrent.thread
 class MainActivity : FlutterActivity() {
     private val geocoderChannel = "com.arkgo.app/geocoder"
     private val documentPickerChannel = "com.arkgo.app/document_picker"
+    private val documentOpenerChannel = "com.arkgo.app/document_opener"
     private val pickPdfRequestCode = 9001
     private var pendingPdfResult: MethodChannel.Result? = null
 
@@ -133,6 +135,27 @@ class MainActivity : FlutterActivity() {
                 result.notImplemented()
             }
         }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, documentOpenerChannel).setMethodCallHandler { call, result ->
+            if (call.method == "openDocument") {
+                val path = call.argument<String>("path")
+                val mimeType = call.argument<String>("mimeType") ?: "*/*"
+
+                if (path.isNullOrBlank()) {
+                    result.error("INVALID_ARGUMENT", "Path missing", null)
+                    return@setMethodCallHandler
+                }
+
+                try {
+                    openDocument(path, mimeType)
+                    result.success(null)
+                } catch (e: Exception) {
+                    result.error("OPEN_DOCUMENT_FAILED", e.message, null)
+                }
+            } else {
+                result.notImplemented()
+            }
+        }
     }
 
     @Deprecated("Deprecated in Java")
@@ -187,5 +210,26 @@ class MainActivity : FlutterActivity() {
             }
         }
         return null
+    }
+
+    private fun openDocument(path: String, mimeType: String) {
+        val file = File(path)
+        if (!file.exists()) {
+            throw IllegalStateException("Arquivo não encontrado para abertura.")
+        }
+
+        val uri = FileProvider.getUriForFile(
+            this,
+            "${applicationContext.packageName}.fileprovider",
+            file
+        )
+
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, mimeType)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        startActivity(Intent.createChooser(intent, "Abrir documento"))
     }
 }

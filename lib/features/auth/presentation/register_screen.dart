@@ -11,8 +11,10 @@ import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/constants/vehicle_categories.dart';
 import '../../../core/services/cep_service.dart';
+import '../../../core/services/document_opener_service.dart';
 import '../../../core/services/document_picker_service.dart';
 import '../../../core/utils/validators.dart';
+import 'widgets/privacy_policy_sheet.dart';
 import '../../motoboy/domain/driver_registration_rules.dart';
 import '../../shared/widgets/category_selector.dart';
 import '../../shared/widgets/primary_button.dart';
@@ -26,6 +28,11 @@ class RegisterScreen extends ConsumerStatefulWidget {
 }
 
 class _RegisterScreenState extends ConsumerState<RegisterScreen> {
+  static const _termsVersion = '2026-05-31';
+  static const _privacyVersion = '2026-06-11';
+  static const _clientTermsAsset = 'assets/legal/termo_cliente_arkgo.pdf';
+  static const _driverTermsAsset = 'assets/legal/termo_motorista_arkgo.pdf';
+
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
@@ -58,6 +65,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   File? _vehicleDocumentFile;
   File? _additionalPermitFile;
   bool _loadingAddress = false;
+  bool _openingTerms = false;
+  bool _acceptedClientTerms = false;
+  bool _acceptedDriverTerms = false;
+  bool _acceptedPrivacyPolicy = false;
   Timer? _addressDebounce;
 
   @override
@@ -92,6 +103,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+
+    if (!_hasAcceptedCurrentTerms || !_acceptedPrivacyPolicy) {
+      _showError(
+        'Você precisa aceitar o termo de uso e a política de privacidade para criar a conta.',
+      );
+      return;
+    }
 
     if (_selectedRole == 'client' &&
         _documentCtrl.text.replaceAll(RegExp(r'\D'), '').isEmpty) {
@@ -159,7 +177,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           motoboyCpf: _selectedRole == 'motoboy'
               ? _motoboyCpfCtrl.text.replaceAll(RegExp(r'\D'), '')
               : null,
-          rgNumber: _selectedRole == 'motoboy' &&
+          rgNumber:
+              _selectedRole == 'motoboy' &&
                   _selectedCategory != null &&
                   driverCategoryNeedsRg(_selectedCategory!.category)
               ? _rgNumberCtrl.text.trim()
@@ -187,6 +206,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           addressLabel: _selectedRole == 'motoboy'
               ? _addressLabelCtrl.text.trim()
               : null,
+          termsAcceptedAt: DateTime.now(),
+          termsVersion: _termsVersion,
+          privacyAcceptedAt: DateTime.now(),
+          privacyVersion: _privacyVersion,
           identityDocumentFile: _selectedRole == 'motoboy'
               ? _identityDocumentFile
               : null,
@@ -266,6 +289,44 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     setState(() {
       onSelected(file);
     });
+  }
+
+  bool get _hasAcceptedCurrentTerms =>
+      _selectedRole == 'client' ? _acceptedClientTerms : _acceptedDriverTerms;
+
+  String get _currentTermsLabel => _selectedRole == 'client'
+      ? 'Termo de Uso do Cliente'
+      : 'Termo de Uso do Entregador';
+
+  String get _currentTermsAsset =>
+      _selectedRole == 'client' ? _clientTermsAsset : _driverTermsAsset;
+
+  String get _currentTermsFileName => _selectedRole == 'client'
+      ? 'Termo_Cliente_ARKGO.pdf'
+      : 'Termo_Entregador_ARKGO.pdf';
+
+  Future<void> _openCurrentTerms() async {
+    if (_openingTerms) return;
+
+    setState(() => _openingTerms = true);
+    try {
+      await DocumentOpenerService().openAssetPdf(
+        assetPath: _currentTermsAsset,
+        fileName: _currentTermsFileName,
+      );
+    } catch (_) {
+      if (mounted) {
+        _showError('Não foi possível abrir o termo agora.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _openingTerms = false);
+      }
+    }
+  }
+
+  Future<void> _openPrivacyPolicy() async {
+    await PrivacyPolicySheet.show(context);
   }
 
   void _onAddressZipChanged() {
@@ -451,6 +512,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
                       const SizedBox(height: AppSpacing.xl3),
 
+                      if (_currentStep == totalSteps - 1) ...[
+                        _buildTermsAcceptanceSection(),
+                        const SizedBox(height: AppSpacing.xl2),
+                      ],
+
                       PrimaryButton(
                         label: _currentStep < totalSteps - 1
                             ? 'Próximo'
@@ -537,6 +603,86 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildTermsAcceptanceSection() {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.surfaceBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Termos legais', style: AppTypography.h3),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            'Leia e aceite o termo correspondente ao seu perfil e a politica de privacidade antes de concluir o cadastro.',
+            style: AppTypography.bodySmall,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          OutlinedButton.icon(
+            onPressed: _openingTerms ? null : _openCurrentTerms,
+            icon: _openingTerms
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.picture_as_pdf_outlined),
+            label: Text('Abrir $_currentTermsLabel'),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          CheckboxListTile(
+            value: _hasAcceptedCurrentTerms,
+            onChanged: (value) {
+              setState(() {
+                if (_selectedRole == 'client') {
+                  _acceptedClientTerms = value ?? false;
+                } else {
+                  _acceptedDriverTerms = value ?? false;
+                }
+              });
+            },
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            activeColor: AppColors.primary,
+            title: Text(
+              'Li e aceito o $_currentTermsLabel.',
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          OutlinedButton.icon(
+            onPressed: _openPrivacyPolicy,
+            icon: const Icon(Icons.privacy_tip_outlined),
+            label: const Text('Abrir Politica de Privacidade'),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          CheckboxListTile(
+            value: _acceptedPrivacyPolicy,
+            onChanged: (value) {
+              setState(() {
+                _acceptedPrivacyPolicy = value ?? false;
+              });
+            },
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            activeColor: AppColors.primary,
+            title: Text(
+              'Li e aceito a Politica de Privacidade.',
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -724,10 +870,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             ),
             validator: (v) {
               final digits = v?.replaceAll(RegExp(r'\D'), '') ?? '';
-              if (_clientType == 'cpf' && digits.length != 11)
+              if (_clientType == 'cpf' && digits.length != 11) {
                 return 'CPF deve ter 11 dígitos';
-              if (_clientType == 'cnpj' && digits.length != 14)
+              }
+              if (_clientType == 'cnpj' && digits.length != 14) {
                 return 'CNPJ deve ter 14 dígitos';
+              }
               return null;
             },
           ),
@@ -864,11 +1012,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 ),
               ),
               validator: (v) {
-                if (v == null || v.isEmpty)
+                if (v == null || v.isEmpty) {
                   return 'Ano do veículo é obrigatório';
+                }
                 final year = int.tryParse(v);
-                if (year == null || year < 1980 || year > 2035)
+                if (year == null || year < 1980 || year > 2035) {
                   return 'Ano inválido';
+                }
                 return null;
               },
             ),
@@ -1216,7 +1366,10 @@ class _DocumentsChecklistCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = <({String label, bool done})>[
       if (driverCategoryNeedsRg(category))
-        (label: 'Foto do documento de identificação', done: hasIdentityDocument),
+        (
+          label: 'Foto do documento de identificação',
+          done: hasIdentityDocument,
+        ),
       (label: 'Selfie para reconhecimento facial', done: hasSelfieWithDocument),
       if (driverCategoryNeedsVehicleDocument(category))
         (label: 'Documento do veículo em PDF', done: hasVehicleDocument),
@@ -1350,7 +1503,6 @@ class _DocumentUploadTile extends StatelessWidget {
     );
   }
 }
-
 
 // ── Conta dígitos antes de [upToOffset] no texto bruto ────────
 int _digitsBeforeOffset(String text, int upToOffset) {

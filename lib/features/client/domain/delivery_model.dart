@@ -52,6 +52,9 @@ enum DeliveryStatus {
 }
 
 class DeliveryModel {
+  static double _roundCurrency(double value) =>
+      double.parse(value.toStringAsFixed(2));
+
   final String id;
   final String clientId;
   final String? motoboyId;
@@ -103,7 +106,8 @@ class DeliveryModel {
   final int helperCount;
   final bool roundTrip;
   final DateTime? scheduledFor;
-  final String? cargoType; // 'furniture' | 'appliances' | 'construction' | 'other'
+  final String?
+  cargoType; // 'furniture' | 'appliances' | 'construction' | 'other'
 
   const DeliveryModel({
     required this.id,
@@ -304,7 +308,7 @@ class DeliveryModel {
     _ => Icons.payment_rounded,
   };
 
-  double get netEarnings => value - commission;
+  double get netEarnings => _roundCurrency(value - commission);
 
   MotoboyReputation get motoboyReputation => MotoboyReputation.fromMetrics(
     avgRating: motoboyAvgRating ?? 5.0,
@@ -318,9 +322,12 @@ class DeliveryModel {
 
   /// Labels contextuais por categoria (corrida vs entrega)
   String get statusLabelForCategory => switch (status) {
-    DeliveryStatus.pending => isRide ? 'Aguardando motorista' : 'Aguardando entregador',
-    DeliveryStatus.accepted => isRide ? 'Motorista a caminho' : 'Entregador a caminho',
-    DeliveryStatus.inProgress => isRide ? 'Corrida em andamento' : 'Em rota de entrega',
+    DeliveryStatus.pending =>
+      isRide ? 'Aguardando motorista' : 'Aguardando entregador',
+    DeliveryStatus.accepted =>
+      isRide ? 'Motorista a caminho' : 'Entregador a caminho',
+    DeliveryStatus.inProgress =>
+      isRide ? 'Corrida em andamento' : 'Em rota de entrega',
     DeliveryStatus.completed => isRide ? 'Corrida concluída' : 'Entregue',
     DeliveryStatus.cancelled => 'Cancelado',
   };
@@ -344,7 +351,8 @@ class DeliveryModel {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final day = DateTime(d.year, d.month, d.day);
-    final timeStr = '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    final timeStr =
+        '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
     if (day == today) return 'Hoje às $timeStr';
     final tomorrow = today.add(const Duration(days: 1));
     if (day == tomorrow) return 'Amanhã às $timeStr';

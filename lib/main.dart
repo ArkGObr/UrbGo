@@ -37,14 +37,18 @@ void _handleDeepLinks() {
   final appLinks = AppLinks();
 
   // App aberto do zero via link (estado encerrado)
-  appLinks.getInitialLink().then((uri) {
+  appLinks.getInitialLink().then((uri) async {
     if (uri != null) {
-      Supabase.instance.client.auth.getSessionFromUrl(uri).catchError((_) {});
+      try {
+        await Supabase.instance.client.auth.getSessionFromUrl(uri);
+      } catch (_) {}
     }
   });
 
   // App em foreground/background recebe o link
-  appLinks.uriLinkStream.listen((uri) {
-    Supabase.instance.client.auth.getSessionFromUrl(uri).catchError((_) {});
+  appLinks.uriLinkStream.listen((uri) async {
+    try {
+      await Supabase.instance.client.auth.getSessionFromUrl(uri);
+    } catch (_) {}
   });
 }

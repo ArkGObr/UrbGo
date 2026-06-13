@@ -11,6 +11,8 @@ class DeliveryRepository {
   static const _selectWithMotoboy =
       '*, motoboys(vehicle_plate, current_lat, current_lng, avg_rating, total_ratings, users(name, phone))';
 
+  double _roundCurrency(double value) => double.parse(value.toStringAsFixed(2));
+
   /// Criar entrega
   Future<DeliveryModel> createDelivery({
     required String clientId,
@@ -38,7 +40,8 @@ class DeliveryRepository {
     DateTime? scheduledFor,
     String? cargoType,
   }) async {
-    final commission = value * 0.25;
+    final roundedValue = _roundCurrency(value);
+    final commission = _roundCurrency(roundedValue * 0.25);
     final data = await _db
         .from('deliveries')
         .insert({
@@ -49,7 +52,7 @@ class DeliveryRepository {
           'delivery_address': deliveryAddress,
           'delivery_lat': deliveryLat,
           'delivery_lng': deliveryLng,
-          'value': value,
+          'value': roundedValue,
           'commission': commission,
           'payment_method': paymentMethod,
           'vehicle_category': vehicleCategory.info.id,

@@ -16,6 +16,7 @@ import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/constants/vehicle_categories.dart';
 import '../../../core/services/connectivity_service.dart';
+import '../../../core/services/notification_service.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/widgets/app_toast.dart';
 import '../../auth/domain/auth_provider.dart';
@@ -48,6 +49,7 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
   StreamSubscription<Position>? _positionSub;
   RealtimeChannel? _runsChannel;
   bool _isShowingModal = false;
+  String? _listeningMotoboyId;
 
   @override
   void initState() {
@@ -90,8 +92,15 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
   void dispose() {
     _pulseController.dispose();
     _positionSub?.cancel();
-    _runsChannel?.unsubscribe();
+    _stopRealtimeRuntime();
     super.dispose();
+  }
+
+  void _stopRealtimeRuntime() {
+    _runsChannel?.unsubscribe();
+    _runsChannel = null;
+    _listeningMotoboyId = null;
+    ref.read(motoboyRepositoryProvider).stopLocationUpdates();
   }
 
   Future<void> _initPosition() async {
@@ -179,21 +188,7 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
           return;
         }
         await repo.setOnline(user.id, true);
-        repo.startLocationUpdates(user.id);
-
-        _runsChannel ??= repo.watchAvailableRuns(() async {
-          if (!mounted) return;
-          // Invalida e força atualização do provider
-          ref.invalidate(availableRunsProvider);
-          try {
-            final runs = await ref.read(availableRunsProvider.future);
-            if (runs.isNotEmpty && mounted && !_isShowingModal) {
-              _showScandalousNewRunModal(runs.first.value);
-            }
-          } catch (_) {}
-        });
-
-        await _initPosition();
+        await _ensureRealtimeRuntime(user.id);
         if (mounted) {
           AppToast.show(
             context,
@@ -203,10 +198,8 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
           );
         }
       } else {
-        repo.stopLocationUpdates();
-        _runsChannel?.unsubscribe();
-        _runsChannel = null;
         await repo.setOnline(user.id, false);
+        _stopRealtimeRuntime();
         if (mounted) {
           AppToast.show(
             context,
@@ -228,6 +221,43 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
     } finally {
       if (mounted) setState(() => _isToggling = false);
     }
+  }
+
+  Future<void> _ensureRealtimeRuntime(String motoboyId) async {
+    if (_listeningMotoboyId == motoboyId && _runsChannel != null) {
+      return;
+    }
+
+    _runsChannel?.unsubscribe();
+    _runsChannel = ref
+        .read(motoboyRepositoryProvider)
+        .watchAvailableRuns(
+          motoboyId: motoboyId,
+          onNewRun: () async {
+            if (!mounted) return;
+            ref.invalidate(availableRunsProvider);
+            try {
+              final runs = await ref.read(availableRunsProvider.future);
+              if (runs.isEmpty || !mounted) return;
+              final firstRun = runs.first;
+              await ref
+                  .read(notificationServiceProvider)
+                  .showNewDeliveryAlarm(
+                    deliveryId: firstRun.id,
+                    title: 'Nova corrida disponivel!',
+                    body:
+                        'Voce recebeu um novo servico de ${CurrencyFormatter.format(firstRun.value)}.',
+                  );
+              if (!_isShowingModal && mounted) {
+                _showScandalousNewRunModal(firstRun.value);
+              }
+            } catch (_) {}
+          },
+        );
+    _listeningMotoboyId = motoboyId;
+    ref.read(motoboyRepositoryProvider).startLocationUpdates(motoboyId);
+    ref.invalidate(availableRunsProvider);
+    await _initPosition();
   }
 
   void _centerMap() {
@@ -340,6 +370,18 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<AsyncValue<MotoboyModel>>(motoboyStreamProvider, (_, next) {
+      final user = ref.read(authNotifierProvider).valueOrNull;
+      final motoboy = next.valueOrNull;
+      if (user == null || motoboy == null) return;
+
+      if (motoboy.isOnline) {
+        unawaited(_ensureRealtimeRuntime(user.id));
+      } else {
+        _stopRealtimeRuntime();
+      }
+    });
+
     final motoboyAsync = ref.watch(motoboyStreamProvider);
     final user = ref.watch(authNotifierProvider).valueOrNull;
     final activeRunAsync = user != null
