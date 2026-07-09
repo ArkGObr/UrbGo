@@ -206,201 +206,207 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: AppSpacing.screenPaddingFull,
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: AppSpacing.xl4),
-
-                // Logo
-                FadeSlideIn(
-                  delay: const Duration(milliseconds: 100),
-                  child: Image.asset(
-                    'assets/arkgo-logo.png',
-                    width: 180,
-                    fit: BoxFit.contain,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.xl2),
-
-                FadeSlideIn(
-                  delay: const Duration(milliseconds: 200),
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: AppSpacing.screenPaddingFull,
+                child: Form(
+                  key: _formKey,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Entrar na conta', style: AppTypography.display2),
-                      const SizedBox(height: AppSpacing.sm),
-                      Text('Você em movimento', style: AppTypography.bodyLarge),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.xl4),
+                      const SizedBox(height: AppSpacing.xl4),
 
-                FadeSlideIn(
-                  delay: const Duration(milliseconds: 300),
-                  child: Column(
-                    children: [
-                      // E-mail
-                      TextFormField(
-                        controller: _emailCtrl,
-                        keyboardType: TextInputType.emailAddress,
-                        textInputAction: TextInputAction.next,
-                        style: AppTypography.bodyLarge.copyWith(
-                          color: AppColors.textPrimary,
-                        ),
-                        decoration: const InputDecoration(
-                          labelText: 'E-mail',
-                          prefixIcon: Icon(
-                            Icons.email_outlined,
-                            color: AppColors.textTertiary,
-                            size: 20,
-                          ),
-                        ),
-                        validator: Validators.email,
-                      ),
-                      const SizedBox(height: AppSpacing.lg),
-
-                      // Senha
-                      TextFormField(
-                        controller: _passwordCtrl,
-                        obscureText: _obscurePassword,
-                        textInputAction: TextInputAction.done,
-                        onFieldSubmitted: (_) => _submit(),
-                        style: AppTypography.bodyLarge.copyWith(
-                          color: AppColors.textPrimary,
-                        ),
-                        decoration: InputDecoration(
-                          labelText: 'Senha',
-                          prefixIcon: const Icon(
-                            Icons.lock_outlined,
-                            color: AppColors.textTertiary,
-                            size: 20,
-                          ),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _obscurePassword
-                                  ? Icons.visibility_outlined
-                                  : Icons.visibility_off_outlined,
-                              color: AppColors.textTertiary,
-                              size: 20,
-                            ),
-                            onPressed: () => setState(
-                              () => _obscurePassword = !_obscurePassword,
-                            ),
-                          ),
-                        ),
-                        validator: Validators.password,
-                      ),
-                      const SizedBox(height: AppSpacing.sm),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton(
-                          onPressed: _showForgotPasswordDialog,
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: AppSpacing.sm,
-                              vertical: 0,
-                            ),
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                          child: Text(
-                            'Esqueci minha senha?',
-                            style: AppTypography.labelMedium.copyWith(
-                              color: AppColors.primary,
-                            ),
-                          ),
+                      FadeSlideIn(
+                        delay: const Duration(milliseconds: 100),
+                        child: Image.asset(
+                          'assets/arkgo-logo.png',
+                          width: 180,
+                          fit: BoxFit.contain,
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.xl3),
+                      const SizedBox(height: AppSpacing.xl2),
 
-                // Botão entrar
-                FadeSlideIn(
-                  delay: const Duration(milliseconds: 450),
-                  child: PrimaryButton(
-                    label: 'Entrar',
-                    onPressed: isLoading ? null : _submit,
-                    isLoading: isLoading,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.xl2),
-
-                // Link cadastro
-                FadeSlideIn(
-                  delay: const Duration(milliseconds: 500),
-                  child: Center(
-                    child: TextButton(
-                      onPressed: () => context.go('/register'),
-                      child: RichText(
-                        text: TextSpan(
-                          text: 'Não tem conta? ',
-                          style: AppTypography.bodyMedium,
+                      FadeSlideIn(
+                        delay: const Duration(milliseconds: 200),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            TextSpan(
-                              text: 'Cadastre-se',
-                              style: AppTypography.labelLarge.copyWith(
-                                color: AppColors.primary,
+                            Text(
+                              'Entrar na conta',
+                              style: AppTypography.display2,
+                            ),
+                            const SizedBox(height: AppSpacing.sm),
+                            Text(
+                              'Você em movimento',
+                              style: AppTypography.bodyLarge,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.xl4),
+
+                      FadeSlideIn(
+                        delay: const Duration(milliseconds: 300),
+                        child: Column(
+                          children: [
+                            TextFormField(
+                              controller: _emailCtrl,
+                              keyboardType: TextInputType.emailAddress,
+                              textInputAction: TextInputAction.next,
+                              style: AppTypography.bodyLarge.copyWith(
+                                color: AppColors.textPrimary,
+                              ),
+                              decoration: const InputDecoration(
+                                labelText: 'E-mail',
+                                prefixIcon: Icon(
+                                  Icons.email_outlined,
+                                  color: AppColors.textTertiary,
+                                  size: 20,
+                                ),
+                              ),
+                              validator: Validators.email,
+                            ),
+                            const SizedBox(height: AppSpacing.lg),
+                            TextFormField(
+                              controller: _passwordCtrl,
+                              obscureText: _obscurePassword,
+                              textInputAction: TextInputAction.done,
+                              onFieldSubmitted: (_) => _submit(),
+                              style: AppTypography.bodyLarge.copyWith(
+                                color: AppColors.textPrimary,
+                              ),
+                              decoration: InputDecoration(
+                                labelText: 'Senha',
+                                prefixIcon: const Icon(
+                                  Icons.lock_outlined,
+                                  color: AppColors.textTertiary,
+                                  size: 20,
+                                ),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _obscurePassword
+                                        ? Icons.visibility_outlined
+                                        : Icons.visibility_off_outlined,
+                                    color: AppColors.textTertiary,
+                                    size: 20,
+                                  ),
+                                  onPressed: () => setState(
+                                    () => _obscurePassword = !_obscurePassword,
+                                  ),
+                                ),
+                              ),
+                              validator: Validators.password,
+                            ),
+                            const SizedBox(height: AppSpacing.sm),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                onPressed: _showForgotPasswordDialog,
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: AppSpacing.sm,
+                                    vertical: 0,
+                                  ),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                child: Text(
+                                  'Esqueci minha senha?',
+                                  style: AppTypography.labelMedium.copyWith(
+                                    color: AppColors.primary,
+                                  ),
+                                ),
                               ),
                             ),
                           ],
                         ),
                       ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.lg),
+                      const SizedBox(height: AppSpacing.xl3),
 
-                // Footer com links legais discretos
-                FadeSlideIn(
-                  delay: const Duration(milliseconds: 600),
-                  child: Center(
-                    child: Wrap(
-                      alignment: WrapAlignment.center,
-                      spacing: AppSpacing.xs,
-                      children: [
-                        _LegalLink(
-                          label: 'Termos do cliente',
-                          onTap: () => _openAssetPdf(
-                            _clientTermsAsset,
-                            'Termo_Cliente_ARKGO.pdf',
+                      FadeSlideIn(
+                        delay: const Duration(milliseconds: 450),
+                        child: PrimaryButton(
+                          label: 'Entrar',
+                          onPressed: isLoading ? null : _submit,
+                          isLoading: isLoading,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.xl2),
+
+                      FadeSlideIn(
+                        delay: const Duration(milliseconds: 500),
+                        child: Center(
+                          child: TextButton(
+                            onPressed: () => context.go('/register'),
+                            child: RichText(
+                              text: TextSpan(
+                                text: 'Não tem conta? ',
+                                style: AppTypography.bodyMedium,
+                                children: [
+                                  TextSpan(
+                                    text: 'Cadastre-se',
+                                    style: AppTypography.labelLarge.copyWith(
+                                      color: AppColors.primary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
-                        Text(
-                          '·',
-                          style: AppTypography.bodySmall.copyWith(
-                            color: AppColors.textTertiary,
-                          ),
-                        ),
-                        _LegalLink(
-                          label: 'Termos do entregador',
-                          onTap: () => _openAssetPdf(
-                            _driverTermsAsset,
-                            'Termo_Entregador_ARKGO.pdf',
-                          ),
-                        ),
-                        Text(
-                          '·',
-                          style: AppTypography.bodySmall.copyWith(
-                            color: AppColors.textTertiary,
-                          ),
-                        ),
-                        _LegalLink(
-                          label: 'Privacidade',
-                          onTap: _openPrivacyPolicy,
-                        ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
+                    ],
                   ),
                 ),
-              ],
+              ),
             ),
-          ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                0,
+                AppSpacing.lg,
+                AppSpacing.lg,
+              ),
+              child: Wrap(
+                alignment: WrapAlignment.center,
+                spacing: AppSpacing.xs,
+                runSpacing: AppSpacing.xs,
+                children: [
+                  _LegalLink(
+                    label: 'Termos do cliente',
+                    onTap: () => _openAssetPdf(
+                      _clientTermsAsset,
+                      'Termo_Cliente_ARKGO.pdf',
+                    ),
+                  ),
+                  Text(
+                    '·',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                  _LegalLink(
+                    label: 'Termos do entregador',
+                    onTap: () => _openAssetPdf(
+                      _driverTermsAsset,
+                      'Termo_Entregador_ARKGO.pdf',
+                    ),
+                  ),
+                  Text(
+                    '·',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                  _LegalLink(label: 'Privacidade', onTap: _openPrivacyPolicy),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -362,17 +362,26 @@ class MotoboyRepository {
     }
   }
 
-  /// Desistir de uma corrida aceita (volta a 'pending' para outro entregador pegar)
+  /// Desistir de uma corrida aceita (volta a 'pending' para outro entregador pegar).
+  /// Usa RPC com SECURITY DEFINER para contornar a política RLS de WITH CHECK.
+  /// SQL a criar no Supabase:
+  ///   CREATE OR REPLACE FUNCTION abandon_delivery(p_delivery_id uuid)
+  ///   RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
+  ///   BEGIN
+  ///     UPDATE deliveries SET motoboy_id = NULL, status = 'pending', accepted_at = NULL
+  ///     WHERE id = p_delivery_id AND motoboy_id = auth.uid() AND status = 'accepted';
+  ///     IF NOT FOUND THEN RAISE EXCEPTION 'not_found'; END IF;
+  ///   END;$$;
   Future<void> abandonDelivery(String deliveryId) async {
-    final updated = await _db
-        .from('deliveries')
-        .update({'motoboy_id': null, 'status': 'pending', 'accepted_at': null})
-        .eq('id', deliveryId)
-        .eq('status', 'accepted')
-        .select('id');
-
-    if ((updated as List).isEmpty) {
-      throw Exception('Não foi possível desistir da corrida. Tente novamente.');
+    try {
+      await _db.rpc('abandon_delivery', params: {'p_delivery_id': deliveryId});
+    } on PostgrestException catch (e) {
+      if (e.message.contains('not_found')) {
+        throw Exception(
+          'Esta corrida não pode ser devolvida. Verifique o status e tente novamente.',
+        );
+      }
+      rethrow;
     }
   }
 

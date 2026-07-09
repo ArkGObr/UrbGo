@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
@@ -254,6 +255,14 @@ class _AvailableRunsScreenState extends ConsumerState<AvailableRunsScreen> {
               ),
             ),
             error: (e, _) {
+              if (e is LocationRequirementException) {
+                return _LocationRequirementBody(
+                  serviceDisabled: e.serviceDisabled,
+                  permissionDeniedForever: e.permissionDeniedForever,
+                  onRetry: () => ref.invalidate(availableRunsProvider),
+                );
+              }
+
               debugPrint('[AvailableRuns] Erro: $e');
               return Center(
                 child: Column(
@@ -368,6 +377,102 @@ class _AvailableRunsScreenState extends ConsumerState<AvailableRunsScreen> {
             },
           );
         },
+      ),
+    );
+  }
+}
+
+class _LocationRequirementBody extends StatelessWidget {
+  final bool serviceDisabled;
+  final bool permissionDeniedForever;
+  final VoidCallback onRetry;
+
+  const _LocationRequirementBody({
+    required this.serviceDisabled,
+    required this.permissionDeniedForever,
+    required this.onRetry,
+  });
+
+  Future<void> _handlePrimaryAction() async {
+    if (serviceDisabled) {
+      await Geolocator.openLocationSettings();
+      return;
+    }
+    await Geolocator.openAppSettings();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = serviceDisabled
+        ? 'Ative a localização'
+        : 'Permita o acesso à localização';
+    final subtitle = serviceDisabled
+        ? 'Para ver corridas disponíveis perto de você, ligue o GPS do dispositivo.'
+        : permissionDeniedForever
+        ? 'A permissão de localização foi bloqueada. Abra as configurações do app e permita o acesso para buscar corridas próximas.'
+        : 'Para buscar corridas disponíveis na sua região, permita o acesso à sua localização.';
+    final primaryLabel = serviceDisabled
+        ? 'Ativar localização'
+        : permissionDeniedForever
+        ? 'Abrir configurações'
+        : 'Permitir localização';
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xl4),
+        child: FadeSlideIn(
+          delay: const Duration(milliseconds: 120),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 88,
+                height: 88,
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(AppRadius.xl),
+                  border: Border.all(color: AppColors.surfaceBorder),
+                ),
+                child: Icon(
+                  serviceDisabled
+                      ? Icons.location_off_rounded
+                      : Icons.location_disabled_rounded,
+                  color: AppColors.warning,
+                  size: 42,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xl2),
+              Text(title, style: AppTypography.h3, textAlign: TextAlign.center),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                subtitle,
+                style: AppTypography.bodyMedium,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: AppSpacing.xl2),
+              PrimaryButton(
+                label: primaryLabel,
+                onPressed: () async {
+                  await _handlePrimaryAction();
+                },
+              ),
+              const SizedBox(height: AppSpacing.md),
+              TextButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(
+                  Icons.refresh_rounded,
+                  color: AppColors.primary,
+                ),
+                label: Text(
+                  'Já ativei, tentar novamente',
+                  style: AppTypography.labelLarge.copyWith(
+                    color: AppColors.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

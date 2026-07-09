@@ -1,4 +1,4 @@
-package com.arkgo.arkgo
+package com.urbgo.urbgo
 
 import android.app.Activity
 import android.content.Intent

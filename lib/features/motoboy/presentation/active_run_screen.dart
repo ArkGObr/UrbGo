@@ -8,13 +8,13 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../core/constants/vehicle_categories.dart';
 import '../../../core/services/logger_service.dart';
+import '../../../core/services/navigation_launcher_service.dart';
 import '../../../core/services/notification_service.dart';
 import '../../../core/services/route_service.dart';
 import '../../../core/utils/currency_formatter.dart';
@@ -35,13 +35,6 @@ import '../domain/motoboy_providers.dart';
 /// Provider local para a posição do motoboy em tempo real
 final _myPositionProvider = StateProvider<LatLng?>((ref) => null);
 
-enum _ExternalNavigationApp {
-  googleMaps,
-  waze,
-  appleMaps,
-  browser,
-}
-
 class ActiveRunScreen extends ConsumerStatefulWidget {
   final String deliveryId;
 
@@ -53,6 +46,8 @@ class ActiveRunScreen extends ConsumerStatefulWidget {
 
 class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
   final MapController _mapController = MapController();
+  final NavigationLauncherService _navigationLauncher =
+      const NavigationLauncherService();
   final RouteService _routeService = RouteService();
   StreamSubscription<Position>? _positionStream;
   StreamSubscription<ServiceStatus>? _gpsStatusSub;
@@ -330,17 +325,7 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
     return 'driving';
   }
 
-  String _buildGoogleMapsWebUrl({
-    required LatLng destination,
-    String? waypoint,
-  }) {
-    return 'https://www.google.com/maps/dir/?api=1'
-        '&destination=${destination.latitude},${destination.longitude}'
-        '${waypoint != null ? '&waypoints=$waypoint' : ''}'
-        '&travelmode=$_navigationTravelMode';
-  }
-
-  Future<bool> _launchExternalNavigation(_ExternalNavigationApp app) async {
+  Future<bool> _launchExternalNavigation(ExternalNavigationApp app) async {
     final delivery = _delivery;
     if (delivery == null) return false;
 
@@ -355,93 +340,60 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
         ? '${delivery.extraStopLat},${delivery.extraStopLng}'
         : null;
 
-    final googleWebUri = Uri.parse(
-      _buildGoogleMapsWebUrl(destination: destination, waypoint: waypoint),
+    return _navigationLauncher.launchNavigation(
+      app: app,
+      destination: destination,
+      waypoint: waypoint,
+      travelMode: _navigationTravelMode,
     );
-
-    final candidateUris = switch (app) {
-      _ExternalNavigationApp.googleMaps => [
-          if (Platform.isAndroid && waypoint == null)
-            Uri.parse(
-              'google.navigation:q=${destination.latitude},${destination.longitude}'
-              '&mode=${_navigationTravelMode == 'bicycling' ? 'l' : 'd'}',
-            ),
-          if (Platform.isIOS)
-            Uri.parse(
-              'comgooglemaps://?daddr=${destination.latitude},${destination.longitude}'
-              '&directionsmode=$_navigationTravelMode',
-            ),
-          googleWebUri,
-        ],
-      _ExternalNavigationApp.waze => [
-          Uri.parse(
-            'waze://?ll=${destination.latitude},${destination.longitude}&navigate=yes',
-          ),
-          Uri.parse(
-            'https://waze.com/ul?ll=${destination.latitude},${destination.longitude}&navigate=yes',
-          ),
-        ],
-      _ExternalNavigationApp.appleMaps => [
-          Uri.parse(
-            'maps://?daddr=${destination.latitude},${destination.longitude}'
-            '&dirflg=${_navigationTravelMode == 'bicycling' ? 'w' : 'd'}',
-          ),
-        ],
-      _ExternalNavigationApp.browser => [googleWebUri],
-    };
-
-    for (final uri in candidateUris) {
-      if (!await canLaunchUrl(uri)) continue;
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-      return true;
-    }
-
-    return false;
   }
 
   Future<void> _openExternalNavigationPicker() async {
     final delivery = _delivery;
     if (delivery == null) return;
 
-    final app = await showModalBottomSheet<_ExternalNavigationApp>(
+    final app = await showModalBottomSheet<ExternalNavigationApp>(
       context: context,
       backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
       ),
       builder: (context) {
-        final options = <({
-          _ExternalNavigationApp app,
-          IconData icon,
-          String title,
-          String subtitle,
-        })>[
-          (
-            app: _ExternalNavigationApp.googleMaps,
-            icon: Icons.map_rounded,
-            title: 'Google Maps',
-            subtitle: 'Abrir rota no Google Maps',
-          ),
-          (
-            app: _ExternalNavigationApp.waze,
-            icon: Icons.navigation_rounded,
-            title: 'Waze',
-            subtitle: 'Abrir rota no Waze',
-          ),
-          if (Platform.isIOS)
-            (
-              app: _ExternalNavigationApp.appleMaps,
-              icon: Icons.directions_car_filled_rounded,
-              title: 'Apple Maps',
-              subtitle: 'Abrir rota no Apple Maps',
-            ),
-          (
-            app: _ExternalNavigationApp.browser,
-            icon: Icons.open_in_browser_rounded,
-            title: 'Abrir no navegador',
-            subtitle: 'Usar o link externo da rota',
-          ),
-        ];
+        final options =
+            <
+              ({
+                ExternalNavigationApp app,
+                IconData icon,
+                String title,
+                String subtitle,
+              })
+            >[
+              (
+                app: ExternalNavigationApp.googleMaps,
+                icon: Icons.map_rounded,
+                title: 'Google Maps',
+                subtitle: 'Abrir rota no Google Maps',
+              ),
+              (
+                app: ExternalNavigationApp.waze,
+                icon: Icons.navigation_rounded,
+                title: 'Waze',
+                subtitle: 'Abrir rota no Waze',
+              ),
+              if (Platform.isIOS)
+                (
+                  app: ExternalNavigationApp.appleMaps,
+                  icon: Icons.directions_car_filled_rounded,
+                  title: 'Apple Maps',
+                  subtitle: 'Abrir rota no Apple Maps',
+                ),
+              (
+                app: ExternalNavigationApp.browser,
+                icon: Icons.open_in_browser_rounded,
+                title: 'Abrir no navegador',
+                subtitle: 'Usar o link externo da rota',
+              ),
+            ];
 
         return SafeArea(
           child: Padding(
@@ -690,52 +642,27 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
   }
 
   Future<void> _processDeliveryCompletion(DeliveryModel delivery) async {
-    // Tenta capturar foto de confirmação (opcional — pode pular)
+    // Foto obrigatória — sem opção de pular
     File? photoFile;
     if (mounted) {
       final picker = ImagePicker();
-      final shouldPhoto = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: AppColors.surface,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.md),
-          ),
-          title: Text('Foto de entrega', style: AppTypography.h3),
-          content: Text(
-            'Tire uma foto do pacote entregue para confirmar. Opcional, mas recomendado.',
-            style: AppTypography.bodyMedium,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(
-                'Pular',
-                style: AppTypography.labelLarge.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(
-                'Tirar foto',
-                style: AppTypography.labelLarge.copyWith(
-                  color: AppColors.primary,
-                ),
-              ),
-            ),
-          ],
-        ),
+      final xFile = await picker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 75,
+        maxWidth: 1280,
       );
-      if (shouldPhoto == true && mounted) {
-        final xFile = await picker.pickImage(
-          source: ImageSource.camera,
-          imageQuality: 75,
-          maxWidth: 1280,
-        );
-        if (xFile != null) photoFile = File(xFile.path);
+      if (xFile == null) {
+        if (mounted) {
+          AppToast.show(
+            context,
+            title: 'Foto obrigatória',
+            subtitle: 'Tire uma foto do local de entrega para confirmar.',
+            type: AppToastType.warning,
+          );
+        }
+        return;
       }
+      photoFile = File(xFile.path);
     }
 
     setState(() => _isProcessing = true);
@@ -853,9 +780,112 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
             ),
             const SizedBox(height: AppSpacing.xl2),
             PrimaryButton(
-              label: 'Voltar ao início',
-              onPressed: () {
+              label: 'Confirmar recebimento',
+              onPressed: () async {
+                final ok = await showDialog<bool>(
+                  context: context,
+                  builder: (confirmCtx) => AlertDialog(
+                    backgroundColor: AppColors.surface,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                    ),
+                    title: Text(
+                      'Recebeu o pagamento?',
+                      style: AppTypography.h3,
+                    ),
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Confirme que você recebeu o valor do cliente antes de voltar ao início.',
+                          style: AppTypography.bodyMedium,
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+                        Container(
+                          padding: AppSpacing.cardPadding,
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryDeep,
+                            borderRadius: BorderRadius.circular(AppRadius.sm),
+                          ),
+                          child: Column(
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'Você recebe',
+                                    style: AppTypography.labelLarge,
+                                  ),
+                                  const SizedBox(width: AppSpacing.sm),
+                                  Expanded(
+                                    child: Text(
+                                      CurrencyFormatter.format(earnings),
+                                      textAlign: TextAlign.right,
+                                      style: AppTypography.numericMedium,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: AppSpacing.xs),
+                              const Divider(color: AppColors.surfaceBorder),
+                              const SizedBox(height: AppSpacing.xs),
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'Comissão plataforma',
+                                    style: AppTypography.bodySmall,
+                                  ),
+                                  const SizedBox(width: AppSpacing.sm),
+                                  Expanded(
+                                    child: Text(
+                                      '− ${CurrencyFormatter.format(commission)}',
+                                      textAlign: TextAlign.right,
+                                      style: AppTypography.bodySmall.copyWith(
+                                        color: AppColors.textSecondary,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(confirmCtx, false),
+                        child: Text(
+                          'Não recebi',
+                          style: AppTypography.labelLarge.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(confirmCtx, true),
+                        child: Text(
+                          'Sim, recebi!',
+                          style: AppTypography.labelLarge.copyWith(
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+                if (ok != true || !mounted) return;
+                // ignore: use_build_context_synchronously
                 Navigator.pop(ctx);
+                // ignore: use_build_context_synchronously
                 context.go('/motoboy/home');
               },
             ),
@@ -1035,7 +1065,19 @@ class _ActiveRunScreenState extends ConsumerState<ActiveRunScreen> {
                   top: MediaQuery.of(context).padding.top + 8,
                   left: AppSpacing.lg,
                   child: GestureDetector(
-                    onTap: () => context.go('/motoboy/home'),
+                    onTap: () {
+                      if (_delivery?.status == DeliveryStatus.inProgress) {
+                        AppToast.show(
+                          context,
+                          title: 'Entrega em andamento',
+                          subtitle:
+                              'Você já coletou o pedido. Finalize a entrega.',
+                          type: AppToastType.warning,
+                        );
+                        return;
+                      }
+                      context.go('/motoboy/home');
+                    },
                     child: Container(
                       width: 44,
                       height: 44,

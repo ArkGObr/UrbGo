@@ -50,6 +50,8 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
   RealtimeChannel? _runsChannel;
   bool _isShowingModal = false;
   String? _listeningMotoboyId;
+  final Set<String> _notifiedRunIds = {};
+  Timer? _pollTimer;
 
   @override
   void initState() {
@@ -100,7 +102,48 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
     _runsChannel?.unsubscribe();
     _runsChannel = null;
     _listeningMotoboyId = null;
+    _pollTimer?.cancel();
+    _pollTimer = null;
     ref.read(motoboyRepositoryProvider).stopLocationUpdates();
+  }
+
+  void _startPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _onNewRunDetected();
+    });
+  }
+
+  /// Chamado tanto pelo Realtime quanto pelo timer de polling.
+  void _onNewRunDetected() {
+    ref.invalidate(availableRunsProvider);
+    unawaited(_notifyNewRuns());
+  }
+
+  Future<void> _notifyNewRuns() async {
+    if (!mounted) return;
+    try {
+      final runs = await ref.read(availableRunsProvider.future);
+      if (!mounted || runs.isEmpty) return;
+      final newRuns =
+          runs.where((r) => !_notifiedRunIds.contains(r.id)).toList();
+      if (newRuns.isEmpty) return;
+      for (final r in newRuns) {
+        _notifiedRunIds.add(r.id);
+      }
+      final firstNew = newRuns.first;
+      await ref
+          .read(notificationServiceProvider)
+          .showNewDeliveryAlarm(
+            deliveryId: firstNew.id,
+            title: 'Nova corrida disponivel!',
+            body:
+                'Voce recebeu um novo servico de ${CurrencyFormatter.format(firstNew.value)}.',
+          );
+      if (!_isShowingModal && mounted) {
+        _showScandalousNewRunModal(firstNew.value);
+      }
+    } catch (_) {}
   }
 
   Future<void> _initPosition() async {
@@ -229,35 +272,27 @@ class _MotoboyHomeScreenState extends ConsumerState<MotoboyHomeScreen>
     }
 
     _runsChannel?.unsubscribe();
+    _notifiedRunIds.clear();
     _runsChannel = ref
         .read(motoboyRepositoryProvider)
         .watchAvailableRuns(
           motoboyId: motoboyId,
-          onNewRun: () async {
-            if (!mounted) return;
-            ref.invalidate(availableRunsProvider);
-            try {
-              final runs = await ref.read(availableRunsProvider.future);
-              if (runs.isEmpty || !mounted) return;
-              final firstRun = runs.first;
-              await ref
-                  .read(notificationServiceProvider)
-                  .showNewDeliveryAlarm(
-                    deliveryId: firstRun.id,
-                    title: 'Nova corrida disponivel!',
-                    body:
-                        'Voce recebeu um novo servico de ${CurrencyFormatter.format(firstRun.value)}.',
-                  );
-              if (!_isShowingModal && mounted) {
-                _showScandalousNewRunModal(firstRun.value);
-              }
-            } catch (_) {}
-          },
+          onNewRun: _onNewRunDetected,
         );
     _listeningMotoboyId = motoboyId;
     ref.read(motoboyRepositoryProvider).startLocationUpdates(motoboyId);
     ref.invalidate(availableRunsProvider);
     await _initPosition();
+
+    // Popula o set com as corridas já existentes para não notificar desnecessariamente
+    try {
+      final currentRuns = await ref.read(availableRunsProvider.future);
+      for (final r in currentRuns) {
+        _notifiedRunIds.add(r.id);
+      }
+    } catch (_) {}
+
+    _startPolling();
   }
 
   void _centerMap() {

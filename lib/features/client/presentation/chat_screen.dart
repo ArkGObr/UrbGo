@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../core/services/navigation_launcher_service.dart';
 import '../../auth/domain/auth_provider.dart';
 import '../data/chat_repository.dart';
 
@@ -210,6 +211,9 @@ class _MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final uri = NavigationLauncherService.extractFirstUri(message.content);
+    final isMapUri = uri != null && NavigationLauncherService.isMapUri(uri);
+
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
@@ -268,9 +272,59 @@ class _MessageBubble extends StatelessWidget {
                   fontSize: 10,
                 ),
               ),
+              if (uri != null) ...[
+                const SizedBox(height: AppSpacing.xs),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _openUri(context, uri, isMapUri),
+                    icon: Icon(
+                      isMapUri
+                          ? Icons.navigation_rounded
+                          : Icons.open_in_new_rounded,
+                      size: 14,
+                    ),
+                    label: Text(isMapUri ? 'Abrir no mapa' : 'Abrir link'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: isMine
+                          ? AppColors.background
+                          : AppColors.primary,
+                      side: BorderSide(
+                        color: isMine
+                            ? AppColors.background.withValues(alpha: 0.35)
+                            : AppColors.primary.withValues(alpha: 0.35),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.sm,
+                        vertical: 6,
+                      ),
+                      visualDensity: VisualDensity.compact,
+                      textStyle: AppTypography.labelSmall,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Future<void> _openUri(BuildContext context, Uri uri, bool isMapUri) async {
+    final launched = await const NavigationLauncherService().openExternalUri(
+      uri,
+    );
+    if (launched || !context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          isMapUri
+              ? 'Nao foi possivel abrir o app de navegacao.'
+              : 'Nao foi possivel abrir o link.',
+        ),
+        backgroundColor: AppColors.surface,
       ),
     );
   }

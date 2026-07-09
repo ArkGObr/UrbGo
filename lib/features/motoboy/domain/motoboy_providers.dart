@@ -12,6 +12,18 @@ final motoboyRepositoryProvider = Provider<MotoboyRepository>(
   (ref) => MotoboyRepository(),
 );
 
+class LocationRequirementException implements Exception {
+  final bool serviceDisabled;
+  final bool permissionDeniedForever;
+
+  const LocationRequirementException({
+    required this.serviceDisabled,
+    required this.permissionDeniedForever,
+  });
+
+  bool get permissionDenied => !serviceDisabled;
+}
+
 /// Dados do motoboy em tempo real
 final motoboyStreamProvider = StreamProvider<MotoboyModel>((ref) async* {
   final user = ref.watch(authNotifierProvider).valueOrNull;
@@ -39,6 +51,28 @@ final motoboyStreamProvider = StreamProvider<MotoboyModel>((ref) async* {
 final availableRunsProvider = FutureProvider<List<DeliveryModel>>((ref) async {
   final user = ref.watch(authNotifierProvider).valueOrNull;
   if (user == null) return [];
+
+  final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+  if (!serviceEnabled) {
+    throw const LocationRequirementException(
+      serviceDisabled: true,
+      permissionDeniedForever: false,
+    );
+  }
+
+  var permission = await Geolocator.checkPermission();
+  if (permission == LocationPermission.denied) {
+    permission = await Geolocator.requestPermission();
+  }
+
+  if (permission == LocationPermission.denied ||
+      permission == LocationPermission.deniedForever) {
+    throw LocationRequirementException(
+      serviceDisabled: false,
+      permissionDeniedForever: permission == LocationPermission.deniedForever,
+    );
+  }
+
   final pos = await Geolocator.getCurrentPosition(
     desiredAccuracy: LocationAccuracy.high,
   );

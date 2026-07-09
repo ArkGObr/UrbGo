@@ -46,3 +46,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Supabase SQL local secret files
+supabase/sql/fix_database_push.sql

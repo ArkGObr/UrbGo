@@ -15,7 +15,7 @@ if (keyPropertiesFile.exists()) {
 }
 
 android {
-    namespace = "com.arkgo.arkgo"
+    namespace = "com.urbgo.urbgo"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 

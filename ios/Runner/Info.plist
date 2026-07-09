@@ -39,6 +39,12 @@
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>comgooglemaps</string>
+		<string>waze</string>
+		<string>maps</string>
+	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>O ArkGo usa sua localização para mostrar sua posição no mapa durante entregas e calcular rotas.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
