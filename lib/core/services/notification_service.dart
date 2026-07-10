@@ -132,52 +132,56 @@ class NotificationService {
     if (_initialized) return;
     _initialized = true;
 
-    // 1. Solicitar permissão (iOS + Android 13+)
-    await _fcm.requestPermission(alert: true, badge: true, sound: true);
-    await _fcm.setForegroundNotificationPresentationOptions(
-      alert: false,
-      badge: true,
-      sound: false,
-    );
+    try {
+      // 1. Solicitar permissão (iOS + Android 13+)
+      await _fcm.requestPermission(alert: true, badge: true, sound: true);
+      await _fcm.setForegroundNotificationPresentationOptions(
+        alert: false,
+        badge: true,
+        sound: false,
+      );
 
-    // 2. Inicializar flutter_local_notifications
-    await _local.initialize(
-      const InitializationSettings(
-        android: AndroidInitializationSettings('ic_notification'),
-        iOS: DarwinInitializationSettings(
-          requestAlertPermission: false,
-          requestBadgePermission: false,
-          requestSoundPermission: false,
+      // 2. Inicializar flutter_local_notifications
+      await _local.initialize(
+        const InitializationSettings(
+          android: AndroidInitializationSettings('ic_notification'),
+          iOS: DarwinInitializationSettings(
+            requestAlertPermission: false,
+            requestBadgePermission: false,
+            requestSoundPermission: false,
+          ),
         ),
-      ),
-      onDidReceiveNotificationResponse: _onLocalTap,
-    );
+        onDidReceiveNotificationResponse: _onLocalTap,
+      );
 
-    // 3. Criar canais Android
-    final androidPlugin = _local
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >();
-    await androidPlugin?.createNotificationChannel(_kAndroidChannel);
-    await androidPlugin?.createNotificationChannel(_kReengagementChannel);
-    await androidPlugin?.createNotificationChannel(
-      const AndroidNotificationChannel(
-        'ongoing_run_channel',
-        'Corrida em andamento',
-        description: 'Acompanhamento em tempo real da rota',
-        importance: Importance.low,
-      ),
-    );
+      // 3. Criar canais Android
+      final androidPlugin = _local
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
+      await androidPlugin?.createNotificationChannel(_kAndroidChannel);
+      await androidPlugin?.createNotificationChannel(_kReengagementChannel);
+      await androidPlugin?.createNotificationChannel(
+        const AndroidNotificationChannel(
+          'ongoing_run_channel',
+          'Corrida em andamento',
+          description: 'Acompanhamento em tempo real da rota',
+          importance: Importance.low,
+        ),
+      );
 
-    // 4. Foreground: exibir notificação local
-    FirebaseMessaging.onMessage.listen(_showLocal);
+      // 4. Foreground: exibir notificação local
+      FirebaseMessaging.onMessage.listen(_showLocal);
 
-    // 5. Background → foreground: navegar ao tocar
-    FirebaseMessaging.onMessageOpenedApp.listen(_handleRemoteNavigation);
+      // 5. Background → foreground: navegar ao tocar
+      FirebaseMessaging.onMessageOpenedApp.listen(_handleRemoteNavigation);
 
-    // 6. App estava terminado e foi aberto pela notificação
-    final initial = await _fcm.getInitialMessage();
-    if (initial != null) _handleRemoteNavigation(initial);
+      // 6. App estava terminado e foi aberto pela notificação
+      final initial = await _fcm.getInitialMessage();
+      if (initial != null) _handleRemoteNavigation(initial);
+    } catch (e, stack) {
+      debugPrint('[FCM] Erro ao inicializar notificações: $e\n$stack');
+    }
   }
 
   /// Salva o FCM token do usuário no banco e registra listener de renovação

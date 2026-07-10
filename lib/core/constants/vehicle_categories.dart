@@ -1,13 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum VehicleCategory {
-  motoboy,
-  car,
-  bike,
-  mototaxi,
-  van,
-  truck,
-}
+enum VehicleCategory { motoboy, car, bike, mototaxi, van, truck }
 
 class VehicleCategoryInfo {
   final VehicleCategory category;
@@ -135,6 +128,40 @@ extension VehicleCategoryExtension on VehicleCategory {
   }
 }
 
+/// Regras de visibilidade de corridas usadas como fallback no app quando a
+/// fila `delivery_notification_targets` não está disponível no ambiente ou
+/// volta vazia. A prioridade oficial continua sendo a fila do banco.
+List<VehicleCategory> fallbackVisibleDeliveryCategoriesForDriver(
+  VehicleCategory driverCategory,
+) {
+  return switch (driverCategory) {
+    VehicleCategory.motoboy => [VehicleCategory.motoboy, VehicleCategory.bike],
+    VehicleCategory.bike => [VehicleCategory.bike, VehicleCategory.motoboy],
+    _ => [driverCategory],
+  };
+}
+
+bool driverCanSeeDeliveryCategoryFallback({
+  required VehicleCategory driverCategory,
+  required VehicleCategory deliveryCategory,
+  double? deliveryDistanceKm,
+}) {
+  if (driverCategory == deliveryCategory) return true;
+
+  if (driverCategory == VehicleCategory.motoboy &&
+      deliveryCategory == VehicleCategory.bike) {
+    return true;
+  }
+
+  if (driverCategory == VehicleCategory.bike &&
+      deliveryCategory == VehicleCategory.motoboy) {
+    return (deliveryDistanceKm ?? double.infinity) <=
+        VehicleCategory.bike.info.maxDistanceKm!;
+  }
+
+  return false;
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Tabela de preços por faixa de KM
 // ═══════════════════════════════════════════════════════════════
@@ -149,16 +176,16 @@ class _PriceTier {
 
 /// Tabela de preços — MOTO
 const List<_PriceTier> _motoTiers = [
-  _PriceTier(0,  1,   8),
-  _PriceTier(1,  2,  10),
-  _PriceTier(2,  3,  12),
-  _PriceTier(3,  4,  13),
-  _PriceTier(4,  5,  14),
-  _PriceTier(5,  6,  15),
-  _PriceTier(6,  7,  16),
-  _PriceTier(7,  8,  17),
-  _PriceTier(8,  9,  20),
-  _PriceTier(9,  10, 22),
+  _PriceTier(0, 1, 8),
+  _PriceTier(1, 2, 10),
+  _PriceTier(2, 3, 12),
+  _PriceTier(3, 4, 13),
+  _PriceTier(4, 5, 14),
+  _PriceTier(5, 6, 15),
+  _PriceTier(6, 7, 16),
+  _PriceTier(7, 8, 17),
+  _PriceTier(8, 9, 20),
+  _PriceTier(9, 10, 22),
   _PriceTier(10, 11, 22),
   _PriceTier(11, 12, 24),
   _PriceTier(12, 13, 26),
@@ -178,16 +205,16 @@ const List<_PriceTier> _motoTiers = [
 
 /// Tabela de preços — CARRO (~50% acima da moto)
 const List<_PriceTier> _carTiers = [
-  _PriceTier(0,  1,  12),
-  _PriceTier(1,  2,  15),
-  _PriceTier(2,  3,  18),
-  _PriceTier(3,  4,  20),
-  _PriceTier(4,  5,  22),
-  _PriceTier(5,  6,  24),
-  _PriceTier(6,  7,  26),
-  _PriceTier(7,  8,  28),
-  _PriceTier(8,  9,  32),
-  _PriceTier(9,  10, 35),
+  _PriceTier(0, 1, 12),
+  _PriceTier(1, 2, 15),
+  _PriceTier(2, 3, 18),
+  _PriceTier(3, 4, 20),
+  _PriceTier(4, 5, 22),
+  _PriceTier(5, 6, 24),
+  _PriceTier(6, 7, 26),
+  _PriceTier(7, 8, 28),
+  _PriceTier(8, 9, 32),
+  _PriceTier(9, 10, 35),
   _PriceTier(10, 11, 35),
   _PriceTier(11, 12, 38),
   _PriceTier(12, 13, 40),
@@ -252,7 +279,10 @@ class PriceCalculator {
   /// Preço adicional por helper (por contratação, não por km)
   static double helperFee(int helperCount) => helperCount * 15.0;
 
-  static double minFare(VehicleCategoryInfo category, {double surgeMultiplier = 1.0}) {
+  static double minFare(
+    VehicleCategoryInfo category, {
+    double surgeMultiplier = 1.0,
+  }) {
     final tiers = category.category == VehicleCategory.car
         ? _carTiers
         : _motoTiers;

@@ -109,6 +109,8 @@ class MotoboyRepository {
     required String motoboyId,
     required String fallbackCategory,
   }) async {
+    final driverCategory = VehicleCategoryExtension.fromId(fallbackCategory);
+
     try {
       final targets = await _db
           .from('delivery_notification_targets')
@@ -132,15 +134,28 @@ class MotoboyRepository {
       // Se a fila ainda não existir no ambiente, usa o comportamento legado.
     }
 
+    final fallbackCategories = fallbackVisibleDeliveryCategoriesForDriver(
+      driverCategory,
+    ).map((category) => category.info.id).toList();
+
     final data = await _db
         .from('deliveries')
         .select()
         .eq('status', 'pending')
-        .eq('vehicle_category', fallbackCategory)
+        .inFilter('vehicle_category', fallbackCategories)
         .order('created_at', ascending: false)
         .limit(50);
 
-    return (data as List).map((e) => DeliveryModel.fromJson(e)).toList();
+    return (data as List)
+        .map((e) => DeliveryModel.fromJson(e))
+        .where(
+          (delivery) => driverCanSeeDeliveryCategoryFallback(
+            driverCategory: driverCategory,
+            deliveryCategory: delivery.vehicleCategory,
+            deliveryDistanceKm: delivery.distanceKm,
+          ),
+        )
+        .toList();
   }
 
   /// Stream de novas corridas disponíveis (Realtime).

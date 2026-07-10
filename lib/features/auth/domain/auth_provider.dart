@@ -20,6 +20,11 @@ class AuthNotifier extends AsyncNotifier<UserModel?> {
       } else if (data.event == AuthChangeEvent.signedIn ||
           data.event == AuthChangeEvent.tokenRefreshed ||
           data.event == AuthChangeEvent.userUpdated) {
+        // Ignora atualizações automáticas do listener se o próprio provider já estiver no meio
+        // de um processo de login ou cadastro (onde state.isLoading é true).
+        // Isso evita que duas atualizações de estado ocorram ao mesmo tempo e quebrem as rotas.
+        if (state.isLoading) return;
+
         final user = await ref.read(authRepositoryProvider).getSessionUser();
         state = AsyncValue.data(user);
         if (user != null) _initNotifications(user.id);
