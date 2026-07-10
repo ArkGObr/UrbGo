@@ -110,6 +110,8 @@ class MotoboyRepository {
     required String fallbackCategory,
   }) async {
     final driverCategory = VehicleCategoryExtension.fromId(fallbackCategory);
+    List<DeliveryModel> queuedDeliveries = [];
+    bool queueQuerySucceeded = false;
 
     try {
       final targets = await _db
@@ -120,7 +122,7 @@ class MotoboyRepository {
           .order('available_from', ascending: true)
           .limit(100);
 
-      final deliveries = (targets as List)
+      queuedDeliveries = (targets as List)
           .map((row) => row['deliveries'])
           .whereType<Map<String, dynamic>>()
           .where(
@@ -128,34 +130,56 @@ class MotoboyRepository {
           )
           .map(DeliveryModel.fromJson)
           .toList();
-
-      if (deliveries.isNotEmpty) return deliveries;
+      queueQuerySucceeded = true;
     } catch (_) {
-      // Se a fila ainda não existir no ambiente, usa o comportamento legado.
+      // Se a fila ainda não existir no ambiente, ignora.
     }
 
+    // Sempre busca as corridas pendentes do banco (fallback/comportamento geral)
+    // para garantir que entregadores que ficaram online depois ou que não foram
+    // incluídos na fila do trigger (ex: por GPS temporariamente nulo) ainda vejam a corrida.
     final fallbackCategories = fallbackVisibleDeliveryCategoriesForDriver(
       driverCategory,
     ).map((category) => category.info.id).toList();
 
-    final data = await _db
-        .from('deliveries')
-        .select()
-        .eq('status', 'pending')
-        .inFilter('vehicle_category', fallbackCategories)
-        .order('created_at', ascending: false)
-        .limit(50);
+    List<DeliveryModel> fallbackDeliveries = [];
+    try {
+      final data = await _db
+          .from('deliveries')
+          .select()
+          .eq('status', 'pending')
+          .inFilter('vehicle_category', fallbackCategories)
+          .order('created_at', ascending: false)
+          .limit(50);
 
-    return (data as List)
-        .map((e) => DeliveryModel.fromJson(e))
-        .where(
-          (delivery) => driverCanSeeDeliveryCategoryFallback(
-            driverCategory: driverCategory,
-            deliveryCategory: delivery.vehicleCategory,
-            deliveryDistanceKm: delivery.distanceKm,
-          ),
-        )
-        .toList();
+      fallbackDeliveries = (data as List)
+          .map((e) => DeliveryModel.fromJson(e))
+          .where(
+            (delivery) => driverCanSeeDeliveryCategoryFallback(
+              driverCategory: driverCategory,
+              deliveryCategory: delivery.vehicleCategory,
+              deliveryDistanceKm: delivery.distanceKm,
+            ),
+          )
+          .toList();
+    } catch (_) {
+      // Ignora falhas na listagem geral
+    }
+
+    if (!queueQuerySucceeded) {
+      return fallbackDeliveries;
+    }
+
+    // Combina as duas listas e remove duplicatas (comparando pelo ID da entrega)
+    final Map<String, DeliveryModel> combined = {};
+    for (final d in queuedDeliveries) {
+      combined[d.id] = d;
+    }
+    for (final d in fallbackDeliveries) {
+      combined[d.id] = d;
+    }
+
+    return combined.values.toList();
   }
 
   /// Stream de novas corridas disponíveis (Realtime).
