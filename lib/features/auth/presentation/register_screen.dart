@@ -160,18 +160,22 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           document: _selectedRole == 'client'
               ? _documentCtrl.text.replaceAll(RegExp(r'\D'), '')
               : null,
-          vehiclePlate: _selectedRole == 'motoboy'
+          vehiclePlate: _selectedRole == 'motoboy' &&
+                  _selectedCategory != null &&
+                  driverCategoryNeedsPlate(_selectedCategory!.category)
               ? _plateCtrl.text.trim()
               : null,
           vehicleCategory: _selectedRole == 'motoboy'
               ? (_selectedCategory?.id ?? 'motoboy')
               : null,
-          vehicleModel: _selectedRole == 'motoboy'
-              ? _modelCtrl.text.trim().isEmpty
-                    ? null
-                    : _modelCtrl.text.trim()
+          vehicleModel: _selectedRole == 'motoboy' &&
+                  _selectedCategory != null &&
+                  driverCategoryNeedsPlate(_selectedCategory!.category)
+              ? (_modelCtrl.text.trim().isEmpty ? null : _modelCtrl.text.trim())
               : null,
-          vehicleYear: _selectedRole == 'motoboy'
+          vehicleYear: _selectedRole == 'motoboy' &&
+                  _selectedCategory != null &&
+                  driverCategoryNeedsPlate(_selectedCategory!.category)
               ? int.tryParse(_yearCtrl.text.trim())
               : null,
           motoboyCpf: _selectedRole == 'motoboy'
@@ -183,13 +187,19 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   driverCategoryNeedsRg(_selectedCategory!.category)
               ? _rgNumberCtrl.text.trim()
               : null,
-          cnhNumber: _selectedRole == 'motoboy'
+          cnhNumber: _selectedRole == 'motoboy' &&
+                  _selectedCategory != null &&
+                  driverCategoryNeedsCnh(_selectedCategory!.category)
               ? _cnhNumberCtrl.text.trim()
               : null,
-          cnhCategory: _selectedRole == 'motoboy'
+          cnhCategory: _selectedRole == 'motoboy' &&
+                  _selectedCategory != null &&
+                  driverCategoryNeedsCnh(_selectedCategory!.category)
               ? _cnhCategoryCtrl.text.trim().toUpperCase()
               : null,
-          cnhExpirationDate: _selectedRole == 'motoboy'
+          cnhExpirationDate: _selectedRole == 'motoboy' &&
+                  _selectedCategory != null &&
+                  driverCategoryNeedsCnh(_selectedCategory!.category)
               ? _cnhExpirationDate
               : null,
           addressZipCode: _selectedRole == 'motoboy'

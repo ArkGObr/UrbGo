@@ -4,6 +4,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/constants/vehicle_categories.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../client/domain/delivery_model.dart';
 import '../domain/driver_registration_rules.dart';

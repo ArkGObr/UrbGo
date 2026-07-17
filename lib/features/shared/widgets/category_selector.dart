@@ -83,14 +83,14 @@ class _CategorySelectorWidgetState extends State<CategorySelectorWidget> {
                                 scaleX: -1,
                                 child: Image.asset(
                                   cat.assetPath!,
-                                  width: cat.id == 'truck' ? 44 : 36,
-                                  height: cat.id == 'truck' ? 44 : 36,
+                                  width: cat.category == VehicleCategory.truck ? 44 : 36,
+                                  height: cat.category == VehicleCategory.truck ? 44 : 36,
                                   fit: BoxFit.contain,
                                 ),
                               )
                             : Icon(
                                 cat.icon,
-                                size: cat.id == 'truck' ? 36 : 30,
+                                size: cat.category == VehicleCategory.truck ? 36 : 30,
                                 color: isSelected
                                     ? AppColors.primary
                                     : AppColors.textSecondary,

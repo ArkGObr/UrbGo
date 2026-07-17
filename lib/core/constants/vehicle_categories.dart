@@ -105,7 +105,7 @@ const List<VehicleCategoryInfo> vehicleCategories = [
   ),
   VehicleCategoryInfo(
     category: VehicleCategory.truck,
-    id: 'truck',
+    id: 'caminhao',
     name: 'Caminhão',
     icon: Icons.local_shipping_rounded,
     assetPath: 'assets/caminhao.png',
